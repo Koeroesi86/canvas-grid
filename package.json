@@ -1,7 +1,7 @@
 {
   "name": "canvas-grid",
   "version": "1.0.0",
-  "description": "",
+  "description": "Canvas based grid",
   "main": "build",
   "scripts": {
     "dev": "node scripts/dev.js",
@@ -10,8 +10,8 @@
     "test": "echo \"To be concluded...\""
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Krisztian Korosi",
+  "license": "MIT",
   "devDependencies": {
     "@webcomponents/webcomponentsjs": "^2.2.10",
     "babel-core": "^6.24.0",
