@@ -7,7 +7,7 @@
     "dev": "node scripts/dev.js",
     "build": "node scripts/build.js",
     "serve-local": "node server/exampleServe.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"To be concluded...\""
   },
   "keywords": [],
   "author": "",

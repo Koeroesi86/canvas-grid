@@ -9,14 +9,16 @@ const isDev = process.env.NODE_ENV === 'development';
 const config = {
   mode: isDev ? 'development' : 'production',
   entry: {
-    index: path.resolve(__dirname, './components/index.js'),
-    example:  [
-      isDev && `webpack-dev-server/client?http://localhost:${process.env.DEV_PORT}`,
-      // isDev && 'webpack/hot/only-dev-server',
-      isDev && 'webpack/hot/dev-server',
-      path.resolve(__dirname, './components/example.js'),
-    ].filter(Boolean),
-    htmlGenerator: path.resolve(__dirname, './config/htmlGenerator.js'),
+    'web-component': path.resolve(__dirname, './components/web-component.js'),
+    ...(isDev && {
+      htmlGenerator: path.resolve(__dirname, './config/htmlGenerator.js'),
+      example: [
+        `webpack-dev-server/client?http://localhost:${process.env.DEV_PORT}`,
+        // 'webpack/hot/only-dev-server',
+        'webpack/hot/dev-server',
+        path.resolve(__dirname, './components/example.js'),
+      ],
+    }),
   },
   output: {
     pathinfo: true,
@@ -31,7 +33,7 @@ const config = {
     //   filename: isDev ? '[name].css' : '[name].[hash].css',
     //   chunkFilename: isDev ? '[id].css' : '[id].[hash].css',
     // }),
-    new StaticSiteGeneratorPlugin({
+    isDev && new StaticSiteGeneratorPlugin({
       entry: 'htmlGenerator',
       paths: [
         '/',

@@ -1,4 +1,4 @@
-import CanvasGrid from "./index";
+import CanvasGrid from "./web-component";
 
 let canvasGrid;
 
@@ -43,9 +43,6 @@ const init = () => {
 };
 
 window.addEventListener('load', () => {
-  if (window.customElements) {
-    customElements.define('canvas-grid', CanvasGrid);
-  }
   init();
 
   if (module.hot) {

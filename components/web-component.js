@@ -263,7 +263,7 @@ class CanvasGrid extends HTMLElement {
         this.headers.forEach(header => {
           header.cellRenderer(
             '',
-            Math.round((header.index * header.width) + (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset),
+            Math.round((header.web * header.width) + (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset),
             Math.round((fakeRowIndex * this.cellHeight) + (this.showHeaders ? this.headerHeight : 0) - this.scrollYOffset),
             header.width,
             this.cellHeight,
@@ -327,7 +327,7 @@ class CanvasGrid extends HTMLElement {
 
   renderRowNumber(row, y) {
     this.headerDrawingLayer.render(
-      `${row.index + 1}`,
+      `${row.web + 1}`,
       0,
       Math.ceil(y),
       this.rowNumbersWidth,
@@ -548,6 +548,10 @@ class CanvasGrid extends HTMLElement {
   attributeChangedCallback(attrName, oldVal, newVal) {
     console.log('attributeChangedCallback', attrName, oldVal, newVal)
   }
+}
+
+if (window && window.customElements) {
+  customElements.define('canvas-grid', CanvasGrid);
 }
 
 export default CanvasGrid;
