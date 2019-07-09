@@ -5,6 +5,7 @@
   "main": "build",
   "scripts": {
     "dev": "node scripts/dev.js",
+    "generate-version": "node scripts/version.js",
     "build": "node scripts/build.js",
     "serve-local": "node server/exampleServe.js",
     "test": "echo \"To be concluded...\""

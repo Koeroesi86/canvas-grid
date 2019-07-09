@@ -8,6 +8,9 @@ cache:
 script:
   - export NODE_ENV=production
   - export TRAVIS_TAG="$(git rev-parse --short ${TRAVIS_COMMIT})"
+  - yarn generate-version
   - yarn build
-  - echo "version $VERSION built."
-  - git tag "v$VERSION"
+deploy:
+  provider: npm
+  email: $NPM_EMAIL
+  api_key: $NPM_TOKEN
