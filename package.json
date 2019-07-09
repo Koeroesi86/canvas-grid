@@ -14,7 +14,11 @@
     "test": "echo \"To be concluded...\""
   },
   "keywords": [],
-  "author": "Krisztian Korosi",
+  "author": {
+    "name" : "Krisztian Korosi",
+    "url" : "https://github.com/Koeroesi86"
+  },
+  "repository": "github:Koeroesi86/canvas-grid",
   "license": "MIT",
   "devDependencies": {
     "@webcomponents/webcomponentsjs": "^2.2.10",
