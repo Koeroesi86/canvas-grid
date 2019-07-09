@@ -6,4 +6,8 @@ cache:
   directories:
     - node_modules
 script:
+  - export NODE_ENV=production
+  - export TRAVIS_TAG="$(git rev-parse --short ${TRAVIS_COMMIT})"
   - yarn build
+  - echo "version $VERSION built."
+  - git tag "v$VERSION"
