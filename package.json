@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Canvas based grid",
   "main": "build",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "node scripts/dev.js",
     "generate-version": "node scripts/version.js",
