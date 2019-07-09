@@ -6,5 +6,5 @@ const minor = (TRAVIS_BUILD_NUMBER || '1').padStart(3, '0');
 const major = Math.floor(TRAVIS_BUILD_NUMBER / 1000);
 const version = `1.${major}.${minor}-${TRAVIS_TAG || 'release'}`;
 
-execSync(`yarn version --no-git-tag-version "v${version}"`, { shell: true });
+execSync(`yarn version --no-git-tag-version --new-version "v${version}"`, { shell: true });
 console.log('version set', version);
