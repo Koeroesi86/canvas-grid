@@ -1,5 +1,5 @@
 {
-  "name": "canvas-grid",
+  "name": "@koeroesi86/canvas-grid",
   "version": "1.0.0",
   "description": "Canvas based grid",
   "main": "build",
