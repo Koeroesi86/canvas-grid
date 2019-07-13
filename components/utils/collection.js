@@ -33,9 +33,15 @@ class Collection {
     }
   }
 
-  clear() {
-    this.items = {};
-    this.keys.splice(0);
+  clear(matcher) {
+    if (typeof matcher === 'function') {
+      this.forEach((item, key) => {
+        if (matcher(item, key)) this.delete(key);
+      });
+    } else {
+      this.items = {};
+      this.keys.splice(0);
+    }
   }
 
   forEach(fn) {

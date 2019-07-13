@@ -15,8 +15,8 @@
   },
   "keywords": [],
   "author": {
-    "name" : "Krisztian Korosi",
-    "url" : "https://github.com/Koeroesi86"
+    "name": "Krisztian Korosi",
+    "url": "https://github.com/Koeroesi86"
   },
   "repository": "github:Koeroesi86/canvas-grid",
   "license": "MIT",
@@ -24,9 +24,11 @@
     "@webcomponents/webcomponentsjs": "^2.2.10",
     "babel-core": "^6.24.0",
     "babel-loader": "^7.1.5",
+    "babel-plugin-syntax-jsx": "^6.18.0",
     "babel-plugin-transform-custom-element-classes": "^0.1.0",
     "babel-plugin-transform-decorators-legacy": "^1.3.5",
     "babel-plugin-transform-es2015-classes": "^6.24.1",
+    "babel-plugin-transform-react-jsx": "^6.24.1",
     "babel-plugin-transform-runtime": "^6.23.0",
     "babel-preset-es2015": "^6.24.1",
     "babel-preset-stage-0": "^6.24.1",

@@ -4,6 +4,8 @@
     "stage-0"
   ],
   "plugins": [
+    "babel-plugin-syntax-jsx",
+    "babel-plugin-transform-react-jsx",
     "transform-custom-element-classes",
     "transform-es2015-classes",
     "transform-runtime",

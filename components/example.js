@@ -1,4 +1,4 @@
-import CanvasGrid from "./web-component";
+import "./web-component";
 
 let canvasGrid;
 
@@ -27,7 +27,7 @@ const init = () => {
         canvasGrid.setValues(data.all);
       }
       if (data.row) {
-        canvasGrid.transaction({ update: [ data.row ] });
+        canvasGrid.queueUpdate(data.row)
       }
     } catch (e) {
       console.error(e)

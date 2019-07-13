@@ -1,4 +1,4 @@
-import Renderer from "../renderers/renderer";
+import Renderer from "./renderer";
 
 class DrawingLayer {
   constructor(options = {}) {
