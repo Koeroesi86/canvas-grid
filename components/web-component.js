@@ -292,26 +292,27 @@ class CanvasGrid extends HTMLElement {
       }
 
       columns.forEach((column, key) => {
-        const { value, updatedAt } = column;
+        const { displayedValue, updatedAt } = column;
         const header = this.getColumnHeader(key);
         const shouldUpdate = updatedAt > updateUntil;
 
         if (header) {
+          const isNotPrev = prevRow[key] !== displayedValue;
           if ((forced || this.hasScrolled() || shouldUpdate) && this.isInViewport(currentX, currentY, header.width, row.height)) {
             header.cellRenderer(
-              value,
+              displayedValue,
               currentX,
               currentY,
               header.width,
               row.height,
               shouldUpdate || this.hasScrolled() || forced,
-              prevRow[key] !== value,
+              isNotPrev,
               forced || this.hasScrolled(),
               now - updatedAt
             );
           }
-          if (prevRow[key] !== value) {
-            prevRow[key] = value;
+          if (isNotPrev) {
+            prevRow[key] = displayedValue;
           }
           currentX += Math.round(header.width);
         }
@@ -327,7 +328,7 @@ class CanvasGrid extends HTMLElement {
 
   renderRowNumber(row, y) {
     this.headerDrawingLayer.render(
-      `${row.web + 1}`,
+      `${row.index + 1}`,
       0,
       Math.ceil(y),
       this.rowNumbersWidth,
@@ -460,7 +461,8 @@ class CanvasGrid extends HTMLElement {
         const rowId = this.getRowId(row, index);
         const columns = new Collection();
         Object.keys(row).forEach(key => {
-          columns.set(key, generateColumn(row[key], key));
+          const header = this.headers.get(key);
+          columns.set(key, generateColumn(row[key], key, null, header.valueFormatter(row[key])));
         });
         this._dataCollection.set(rowId, { index, height: this.cellHeight, columns });
       });
@@ -479,26 +481,29 @@ class CanvasGrid extends HTMLElement {
   updateValues() {
     const now = getNow();
     this.pendingUpdates.forEach(row => {
-      const currentIndex = this._dataCollection.keys.indexOf(this.getRowId(row));
-      const rowId = this.getRowId(row, currentIndex);
+      const rowId = this.getRowId(row);
+      const currentIndex = this._dataCollection.keys.indexOf(rowId);
       const rowData = this.getRowData(rowId);
       if (rowData) {
         Object.keys(row).forEach(columnKey => {
           const columnValue = row[columnKey];
           const columnData = getColumn(rowData, columnKey);
+          const header = this.headers.get(columnKey);
           if (columnData) {
             if (columnData.value !== columnValue) {
               columnData.value = columnValue;
+              columnData.displayedValue = header.valueFormatter(columnValue);
               columnData.updatedAt = now;
             }
           } else {
-            rowData.columns.set(columnKey, generateColumn(columnValue, columnKey));
+            rowData.columns.set(columnKey, generateColumn(columnValue, columnKey, null, header.valueFormatter(columnValue)));
           }
         });
       } else {
         const columns = new Collection();
         Object.keys(row).forEach(key => {
-          columns.set(key, generateColumn(row[key], key, now));
+          const header = this.headers.get(key);
+          columns.set(key, generateColumn(row[key], key, now, header.valueFormatter(row[key])));
         });
         this._dataCollection.set(rowId, { index: currentIndex !== -1 ? currentIndex : this._dataCollection.keys.length, columns: columns });
       }
@@ -519,6 +524,7 @@ class CanvasGrid extends HTMLElement {
           index: index,
           width: 100,
           cellRenderer: this.renderCell,
+          valueFormatter: v => v + '',
           headerRenderer: this.renderHeader,
         };
         if (typeof column === 'string' || typeof column === 'number') {

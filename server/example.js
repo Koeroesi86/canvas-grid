@@ -2,8 +2,8 @@ const WebSocket = require('ws');
 
 require('dotenv').config();
 
-const rowCount = 200;
-const columnCount = 20;
+const rowCount = 500;
+const columnCount = 30;
 
 module.exports = (server) => {
   console.log('Initialising server');

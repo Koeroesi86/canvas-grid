@@ -9,9 +9,9 @@ const init = () => {
   canvasGrid.headerFont = '13px "Roboto", sans-serif';
 
   const ws = new WebSocket(`ws://localhost:${process.env.DEV_PORT || 3000}`);
-  ws.addEventListener('open', e => {
-    // console.log('open', e);
-  });
+  // ws.addEventListener('open', e => {
+  //   console.log('open', e);
+  // });
   ws.addEventListener('message', e => {
     try {
       const data = JSON.parse(e.data);
