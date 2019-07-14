@@ -1,6 +1,10 @@
-class Loading {
-  constructor({ ctx }) {
-    this.ctx = ctx;
+import Renderer from "./renderer";
+
+class Loading extends Renderer {
+  constructor(options) {
+    super(options);
+
+    this.ctx = this.options.ctx;
 
     this.offCanvas = document.createElement('canvas');
     this.offCanvas.width = 250;
@@ -44,8 +48,10 @@ class Loading {
 
     const x = Math.round((this.ctx.canvas.width - this.offCanvas.width) / 2);
     const y = Math.round((this.ctx.canvas.height - this.offCanvas.height) / 2);
-    this.ctx.clearRect(x, y, 250, 250)
+    this.ctx.clearRect(x, y, 250, 250);
     this.ctx.drawImage(this.offCanvas, x, y);
+
+    return this.offCanvas;
   }
 }
 
