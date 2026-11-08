@@ -14,7 +14,7 @@ const init = () => {
   canvasGrid.font = '12px "Roboto", sans-serif';
   canvasGrid.headerFont = '13px "Roboto", sans-serif';
 
-  const ws = new WebSocket(`ws://localhost:${process.env.DEV_PORT || 3000}`);
+  const ws = new WebSocket(`ws://${window.location.host}/example`);
   ws.addEventListener('message', e => {
     try {
       const data: Partial<ServerMessage> = JSON.parse(e.data);

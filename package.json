@@ -2,13 +2,25 @@
   "name": "@koeroesi86/canvas-grid",
   "version": "1.0.0",
   "description": "Canvas based grid",
-  "main": "build",
+  "main": "./build/web-component.js",
+  "module": "./build/web-component.mjs",
+  "types": "./build/types/web-component.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/types/web-component.d.ts",
+      "import": "./build/web-component.mjs",
+      "require": "./build/web-component.js"
+    }
+  },
+  "files": [
+    "build"
+  ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "dev": "node scripts/dev.mts",
-    "build": "node scripts/build.mts",
+    "dev": "vite",
+    "build": "yarn typecheck && vite build && tsc -p tsconfig.build.json",
     "serve-local": "node server/example-serve.mts",
     "typecheck": "tsc --noEmit",
     "test": "yarn typecheck"
@@ -20,23 +32,16 @@
   },
   "repository": "github:Koeroesi86/canvas-grid",
   "license": "MIT",
+  "type": "commonjs",
   "devDependencies": {
     "@types/lodash.debounce": "^4.0.9",
     "@types/lodash.throttle": "^4.1.9",
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
-    "classnames": "^2.5.1",
-    "css-loader": "^7.1.5",
-    "dotenv": "^18.0.9",
-    "html-webpack-plugin": "^5.6.8",
     "lodash.debounce": "^4.0.8",
     "lodash.throttle": "^4.1.1",
-    "nodemon": "^3.1.14",
-    "style-loader": "^4.0.0",
-    "ts-loader": "^9.6.2",
-    "typescript": "~6.0.3",
-    "webpack": "^5.112.2",
-    "webpack-dev-server": "^6.1.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.6",
     "ws": "^8.22.1"
   }
 }

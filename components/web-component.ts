@@ -1,6 +1,5 @@
 import throttle from 'lodash.throttle';
 import debounce from 'lodash.debounce';
-import classNames from 'classnames';
 import Collection from './utils/collection';
 import {
   getColumn,
@@ -8,7 +7,7 @@ import {
   generateColumn,
   getRowId,
 } from './utils/selectors';
-import s from './component.css';
+import styles from './component.css?inline';
 import Loading from './utils/loading';
 import { getContext2d } from './utils/canvas';
 import DrawingLayer from './utils/drawing-layer';
@@ -16,6 +15,24 @@ import CellBackground from './cell-background';
 import HeaderRenderer from './header';
 import CellValueRenderer from './cell-value';
 import type { ColumnData, Key, RowData, RowId, RowInput } from './types';
+
+const classes = {
+  drawingLayer: 'drawingLayer',
+  background: 'background',
+  content: 'content',
+  header: 'header',
+  scrollArea: 'scrollArea',
+};
+
+const STYLE_ELEMENT_ID = 'canvas-grid-styles';
+
+const injectStyles = () => {
+  if (document.getElementById(STYLE_ELEMENT_ID)) return;
+  const style = document.createElement('style');
+  style.id = STYLE_ELEMENT_ID;
+  style.textContent = styles;
+  document.head.appendChild(style);
+};
 
 type Row = RowData<Collection<ColumnData>>;
 
@@ -102,9 +119,9 @@ class CanvasGridComponent extends HTMLElement {
   scrollXOffset = 0;
   prevScrollXOffset = 0;
   lastRender = new Date().valueOf();
-  backgroundCanvas = this.createLayerCanvas(s.background);
-  canvas = this.createLayerCanvas(s.content);
-  headerCanvas = this.createLayerCanvas(s.header);
+  backgroundCanvas = this.createLayerCanvas(classes.background);
+  canvas = this.createLayerCanvas(classes.content);
+  headerCanvas = this.createLayerCanvas(classes.header);
   scrollHelper = document.createElement('div');
   scrollArea = this.createScrollArea();
 
@@ -197,13 +214,13 @@ class CanvasGridComponent extends HTMLElement {
 
   createLayerCanvas(layerClassName: string) {
     const canvas = document.createElement('canvas');
-    canvas.className = classNames(s.drawingLayer, layerClassName);
+    canvas.className = `${classes.drawingLayer} ${layerClassName}`;
     return canvas;
   }
 
   createScrollArea() {
     const scrollArea = document.createElement('div');
-    scrollArea.className = s.scrollArea;
+    scrollArea.className = classes.scrollArea;
     scrollArea.appendChild(this.scrollHelper);
     return scrollArea;
   }
@@ -670,6 +687,7 @@ class CanvasGridComponent extends HTMLElement {
 }
 
 if (window && window.customElements) {
+  injectStyles();
   customElements.define('canvas-grid', CanvasGridComponent);
 }
 
