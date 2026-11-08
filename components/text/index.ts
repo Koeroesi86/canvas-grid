@@ -5,7 +5,6 @@ import type { RenderProps } from '../types';
 
 export interface TextOptions {
   ellipsis: string;
-  characters: string;
   cellPadding: {
     top: number;
     right: number;
@@ -20,7 +19,6 @@ export interface TextOptions {
 class TextRenderer extends Renderer<TextOptions> {
   static readonly defaultOptions: TextOptions = {
     ellipsis: '…',
-    characters: '',
     cellPadding: {
       top: 3,
       right: 3,

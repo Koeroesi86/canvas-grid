@@ -1,59 +1,49 @@
 import React, { Group } from '../utils/jsx';
 import Renderer from '../utils/renderer';
-import { getContext2d } from '../utils/canvas';
 import Rect from '../rectangle';
 import TextRenderer from '../text';
-import type { PositionalRenderer, RenderProps } from '../types';
+import type { CellContext, CellRenderer } from '../types';
 
 export interface HeaderOptions {
-  canvas: HTMLCanvasElement;
+  layer: string;
   background: string;
   font: string;
   color: string;
-  characters: string;
   borderRightWidth: number;
   borderRightColor: string;
   borderBottomWidth: number;
   borderBottomColor: string;
 }
 
-class HeaderRenderer extends Renderer<HeaderOptions> implements PositionalRenderer {
-  static readonly defaultOptions: Omit<HeaderOptions, 'canvas'> = {
+class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
+  static readonly defaultOptions: HeaderOptions = {
+    layer: 'header',
     background: '#333',
     font: '13px monospace',
     color: '#fff',
-    characters: '',
     borderRightWidth: 1,
     borderRightColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#fff',
   };
 
-  isScrolling = false;
-
   private readonly textRenderer: TextRenderer;
 
-  private readonly ctx: CanvasRenderingContext2D;
-
-  private readonly hasBottomBorder: boolean;
-
-  private readonly hasRightBorder: boolean;
-
-  constructor(options: Pick<HeaderOptions, 'canvas'> & Partial<HeaderOptions>) {
+  constructor(options: Partial<HeaderOptions> = {}) {
     super({ ...HeaderRenderer.defaultOptions, ...options });
 
     this.textRenderer = new TextRenderer({
       font: this.options.font,
       color: this.options.color,
-      characters: this.options.characters,
     });
-    this.ctx = getContext2d(this.options.canvas, { alpha: true });
+  }
 
-    this.hasBottomBorder = this.options.borderBottomWidth > 0 && !!this.options.borderBottomColor;
-    this.hasRightBorder = this.options.borderRightWidth > 0 && !!this.options.borderRightColor;
+  get layer() {
+    return this.options.layer;
   }
 
   set font(font: string) {
+    this.options.font = font;
     this.textRenderer.font = font;
   }
 
@@ -61,7 +51,11 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements PositionalRender
     return this.textRenderer.font;
   }
 
-  render({ value = '', x = 0, y = 0, width = 0, height = 0 }: RenderProps) {
+  clearCache() {
+    this.textRenderer.clearCache();
+  }
+
+  draw({ ctx, x, y, width, height, formatted }: Readonly<CellContext>) {
     if (width === 0 || height === 0) return;
 
     const { background, borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
@@ -69,11 +63,11 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements PositionalRender
     (
       <Group>
         <Rect width={width} height={height} color={background} />
-        {this.hasRightBorder && <Rect x={width - borderRightWidth} width={borderRightWidth} height={height} color={borderRightColor} />}
-        {this.hasBottomBorder && <Rect y={height - borderBottomWidth} width={width} height={borderBottomWidth} color={borderBottomColor} />}
-        <this.textRenderer.element value={value} width={width} height={height} />
+        {borderRightWidth > 0 && <Rect x={width - borderRightWidth} width={borderRightWidth} height={height} color={borderRightColor} />}
+        {borderBottomWidth > 0 && <Rect y={height - borderBottomWidth} width={width} height={borderBottomWidth} color={borderBottomColor} />}
+        <this.textRenderer.element value={formatted} width={width} height={height} />
       </Group>
-    ).draw(this.ctx, x, y);
+    ).draw(ctx, x, y);
   }
 }
 

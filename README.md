@@ -78,8 +78,8 @@ Column object fields (`ColumnDefinition`):
 | `displayName` | – | Header text. Not derived from `id` for object columns |
 | `width` | `100` | Column width in px |
 | `valueFormatter` | `String(value)` | Converts the raw value to the displayed string |
-| `cellRenderer` | built-in | Custom cell drawing function |
-| `headerRenderer` | built-in | Custom header drawing function |
+| `renderers` | grid's `cellRenderers` | Renderers drawing a cell of this column, in order. Names of [registered renderers](#custom-renderers-and-layers) or renderer objects |
+| `headerRenderer` | `'header'` | Renderer drawing this column's header (name or object) |
 
 ### Methods
 
@@ -92,6 +92,10 @@ Column object fields (`ColumnDefinition`):
 | `transaction({ add, update, remove })` | Batch form of the above |
 | `getRowData(id)` | Returns the internal row record |
 | `forceDraw()` | Clears and redraws everything |
+| `registerRenderer(name, renderer)` | Makes a [renderer](#custom-renderers-and-layers) available to columns by name; an existing name is replaced |
+| `unregisterRenderer(name)` | Removes a registered renderer |
+| `addLayer(name, { alpha, before })` | Adds a canvas on top of the others (or below the layer named in `before`) |
+| `removeLayer(name)` / `getLayer(name)` | Removes / looks up a layer (`{ name, canvas, ctx }`) |
 
 Updates are throttled (50 ms) and changed cells flash for `flashInDuration + flashOutDuration`.
 
@@ -108,6 +112,72 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 | `headerHeight` | `30` | Header row height |
 | `cellHeight` | `20` | Row height. Set it before `setValues`, it applies to rows as they are created |
 | `fps` | `30` | Maximum redraw rate |
+| `cellRenderers` | `['background', 'value']` | Renderers used by columns without their own `renderers` |
+| `flashInDuration` | `200` | Fade-in of the update flash in ms |
+| `flashOutDuration` | `400` | Fade-out of the update flash in ms |
+
+### Custom renderers and layers
+
+The grid draws onto stacked canvases called layers: `background`, `content` and `header` out of the box. A renderer draws into one layer and is registered under a name; columns select renderers by name. The built-in ones are `'background'` (fill, borders and the update flash), `'value'` (the text) and `'header'`.
+
+```ts
+grid.addLayer('badges'); // on top of the existing layers
+
+grid.registerRenderer('badge', {
+  layer: 'badges',
+  draw({ ctx, x, y, width, formatted }) {
+    ctx.fillStyle = formatted === 'sold out' ? '#c33' : '#3a3';
+    ctx.fillRect(x + width - 8, y + 4, 4, 4);
+  },
+});
+
+grid.setColumns([
+  { id: 'status', renderers: ['background', 'value', 'badge'] },
+]);
+```
+
+A renderer is an object:
+
+| Member | Description |
+| --- | --- |
+| `layer` | Name of the layer its `ctx` belongs to |
+| `draw(cell)` | Draws one cell, header or row number |
+| `isAnimating?(cell)` | Return `true` while the cell is animating. Cells are only redrawn when something changed (value, scroll, resize) or while a renderer reports animation, plus once after it stops |
+| `clearCache?()` | Called when web fonts finish loading |
+
+`cell` (`CellContext`) is one object reused for every cell, so read what you need while drawing and do not keep a reference to it:
+
+| Field | Description |
+| --- | --- |
+| `ctx` | Context of the renderer's layer |
+| `x`, `y`, `width`, `height` | Cell rectangle in canvas pixels |
+| `row`, `column` | `{ id, index }` of the row and the column header; `row` is undefined for headers, `column` for row numbers |
+| `value`, `formatted` | Raw value and the string after the column's `valueFormatter` |
+| `updatedAt`, `age` | When the value last changed, and ms since then (`Infinity` if it never did) |
+| `now`, `dt` | Frame timestamp and ms since the previous frame |
+| `valueChanged` | The formatted value differs from what was drawn last time |
+| `forced` | Everything is being redrawn (first draw, resize, scrolling) |
+| `isScrolling` | The grid is being scrolled |
+| `state` | Object that persists per cell between frames, for your own bookkeeping |
+
+A renderer that animates, for example a pulse that lasts one second after a change:
+
+```ts
+grid.registerRenderer('pulse', {
+  layer: 'badges',
+  isAnimating: ({ age }) => age < 1000,
+  draw({ ctx, x, y, width, height, age }) {
+    ctx.clearRect(x, y, width, height);
+    if (age >= 1000) return;
+    ctx.globalAlpha = 1 - age / 1000;
+    ctx.fillStyle = '#39f';
+    ctx.fillRect(x, y, width, height);
+    ctx.globalAlpha = 1;
+  },
+});
+```
+
+> `cellRenderer(value, x, y, ...)` and `headerRenderer(header, x)` with positional arguments were replaced by the renderer objects above.
 
 ### AG Grid-style adapter
 
@@ -122,7 +192,7 @@ grid.agApi.getRowNodeId = row => row.key;
 
 ### TypeScript
 
-Types ship with the package. Besides the element class (default export) it exports `ColumnHeader`, `ColumnDefinition` and `Transaction`, and registers `canvas-grid` in `HTMLElementTagNameMap`, so `document.querySelector('canvas-grid')` is typed.
+Types ship with the package. Besides the element class (default export) it exports `ColumnHeader`, `ColumnDefinition`, `Transaction`, `CellRenderer`, `CellContext`, `CellState`, `RendererRef` and `LayerOptions`, and registers `canvas-grid` in `HTMLElementTagNameMap`, so `document.querySelector('canvas-grid')` is typed.
 
 > The declarations are single-format. Bundler-style resolution (`moduleResolution: "bundler"`) works; strict Node16 ESM resolution may report the types as CommonJS.
 

@@ -5,21 +5,35 @@ import DataStore from './utils/data-store';
 import { getRowId } from './utils/selectors';
 import styles from './component.css?inline';
 import Loading from './utils/loading';
-import { getContext2d } from './utils/canvas';
-import DrawingLayer from './utils/drawing-layer';
+import Layer from './utils/layer';
+import RendererRegistry from './utils/renderer-registry';
 import CellBackground from './cell-background';
 import HeaderRenderer from './header';
 import CellValueRenderer from './cell-value';
-import type { Key, RowId, RowInput } from './types';
+import type { LayerOptions } from './utils/layer';
+import type { CellContext, CellRenderer, CellState, Key, RendererRef, RowId, RowInput } from './types';
 import type { RowIdGetter } from './utils/data-store';
 
 const classes = {
-  drawingLayer: 'drawingLayer',
+  scrollArea: 'scrollArea',
+};
+
+/** Layers and renderers every grid starts with. */
+const builtIn = {
   background: 'background',
   content: 'content',
   header: 'header',
-  scrollArea: 'scrollArea',
+  backgroundRenderer: 'background',
+  valueRenderer: 'value',
+  headerRenderer: 'header',
 };
+
+/** What the grid remembers about a cell between frames. */
+interface CellEntry {
+  value: string | undefined;
+  animating: boolean;
+  state: CellState;
+}
 
 const STYLE_ELEMENT_ID = 'canvas-grid-styles';
 
@@ -31,26 +45,16 @@ const injectStyles = () => {
   document.head.appendChild(style);
 };
 
-type CellRender = (
-  value: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  isUpdated: boolean,
-  isValueUpdated: boolean,
-  forcedDraw: boolean,
-  diff: number,
-) => void;
-
 export interface ColumnHeader {
   index: number;
   id: Key;
   displayName?: string;
   width: number;
-  cellRenderer: CellRender;
+  /** Renderers drawing a cell of this column, in order. Defaults to the grid's `cellRenderers`. */
+  renderers?: RendererRef[];
   valueFormatter: (value: unknown) => string;
-  headerRenderer: (header: ColumnHeader, x: number) => void;
+  /** Renderer drawing the header of this column. */
+  headerRenderer: RendererRef;
 }
 
 export type ColumnDefinition = Key | (Partial<ColumnHeader> & { id: Key });
@@ -68,15 +72,11 @@ interface AgApi {
   getRowNodeId: RowIdGetter;
 }
 
+export type { CellContext, CellRenderer, CellState, LayerOptions, RendererRef };
+
 declare global {
   interface HTMLElementTagNameMap {
     'canvas-grid': CanvasGridComponent;
-  }
-
-  interface Window {
-    cellBackgroundDrawingLayer?: DrawingLayer<CellBackground>;
-    cellValueDrawingLayer?: DrawingLayer<CellValueRenderer>;
-    headerDrawingLayer?: DrawingLayer<HeaderRenderer>;
   }
 }
 
@@ -86,8 +86,6 @@ class CanvasGridComponent extends HTMLElement {
   _headerFont = '13px monospace';
   headerHeight = 30;
   cellHeight = 20;
-  flashInDuration = 200;
-  flashOutDuration = 500;
   cellPadding = {
     top: 3,
     right: 3,
@@ -100,7 +98,6 @@ class CanvasGridComponent extends HTMLElement {
   ellipsis = '…';
   _backgroundColor = '#333';
   _headerBackgroundColor = '#222';
-  charactersToCache = `${Array(200).fill(1).map((_, index) => String.fromCharCode(index)).join('')} ${this.ellipsis}`;
   textColor = '#efefef';
   dataStore = new DataStore({
     getRowId: (row, index) => this.getRowId(row, index),
@@ -108,7 +105,7 @@ class CanvasGridComponent extends HTMLElement {
     getCellHeight: () => this.cellHeight,
   });
   _dataCollection = this.dataStore.rows;
-  prevValues = new Collection<Record<string, string | undefined>>();
+  cellEntries = new Collection<Record<string, CellEntry>>();
   getRowId: RowIdGetter = getRowId;
   headers = new Collection<ColumnHeader>();
   animationFrame: number | undefined = undefined;
@@ -117,55 +114,53 @@ class CanvasGridComponent extends HTMLElement {
   scrollXOffset = 0;
   prevScrollXOffset = 0;
   lastRender = new Date().valueOf();
-  backgroundCanvas = this.createLayerCanvas(classes.background);
-  canvas = this.createLayerCanvas(classes.content);
-  headerCanvas = this.createLayerCanvas(classes.header);
+  lastDraw = this.lastRender;
+  isScrolling = false;
   scrollHelper = document.createElement('div');
   scrollArea = this.createScrollArea();
 
-  cellBackgroundDrawingLayer = new DrawingLayer({
-    canvas: this.backgroundCanvas,
-    renderer: new CellBackground({
-      canvas: this.backgroundCanvas,
-      background: this._backgroundColor,
-      alpha: false,
-      enableFlashing: true,
-      flashInDuration: 200,
-      flashOutDuration: 400,
-      flashRGB: '214, 144, 13',
-      borderRightWidth: 1,
-      borderRightColor: '#3f3f3f',
-      borderBottomWidth: 1,
-      borderBottomColor: '#3f3f3f',
-    }),
+  /** Canvases from bottom to top. */
+  layers: Layer[] = [];
+  private readonly layersByName = new Map<string, Layer>();
+  private readonly warnedLayers = new Set<string>();
+  renderers = new RendererRegistry();
+  /** Renderers drawing a cell when its column does not name its own. */
+  cellRenderers: RendererRef[] = [builtIn.backgroundRenderer, builtIn.valueRenderer];
+
+  cellBackgroundRenderer = new CellBackground({
+    layer: builtIn.background,
+    background: this._backgroundColor,
+    enableFlashing: true,
+    flashInDuration: 200,
+    flashOutDuration: 400,
+    flashRGB: '214, 144, 13',
+    borderRightWidth: 1,
+    borderRightColor: '#3f3f3f',
+    borderBottomWidth: 1,
+    borderBottomColor: '#3f3f3f',
   });
 
-  cellValueDrawingLayer = new DrawingLayer({
-    canvas: this.canvas,
-    renderer: new CellValueRenderer({
-      font: this._font,
-      color: this.textColor,
-      characters: this.charactersToCache,
-      canvas: this.canvas,
-    }),
+  cellValueRenderer = new CellValueRenderer({
+    layer: builtIn.content,
+    font: this._font,
+    color: this.textColor,
   });
 
-  headerDrawingLayer = new DrawingLayer({
-    canvas: this.headerCanvas,
-    renderer: new HeaderRenderer({
-      canvas: this.headerCanvas,
-      font: this._headerFont,
-      color: this.textColor,
-      characters: this.charactersToCache,
-      background: '#222',
-      borderRightWidth: 1,
-      borderRightColor: '#2f2f2f',
-      borderBottomWidth: 1,
-      borderBottomColor: '#2f2f2f',
-    }),
+  headerCellRenderer = new HeaderRenderer({
+    layer: builtIn.header,
+    font: this._headerFont,
+    color: this.textColor,
+    background: '#222',
+    borderRightWidth: 1,
+    borderRightColor: '#2f2f2f',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2f2f2f',
   });
 
-  loadingIndicator = new Loading({ ctx: getContext2d(this.headerCanvas) });
+  loadingIndicator: Loading;
+  /** Reused for every cell drawn; see CellContext. */
+  private readonly cell: CellContext;
+  private readonly placeholderState: CellState = {};
   throttleTransation = throttle(() => {
     const prevSize = this.totalHeight;
     this.dataStore.flush();
@@ -184,10 +179,35 @@ class CanvasGridComponent extends HTMLElement {
     this.setColumns = this.setColumns.bind(this);
     this.clearValues = this.clearValues.bind(this);
     this.updateLastRender = this.updateLastRender.bind(this);
-    this.renderHeader = this.renderHeader.bind(this);
-    this.renderCell = this.renderCell.bind(this);
     this.transaction = this.transaction.bind(this);
     this.queueUpdate = this.queueUpdate.bind(this);
+
+    this.addLayer(builtIn.background, { alpha: false });
+    this.addLayer(builtIn.content);
+    this.addLayer(builtIn.header);
+    this.registerRenderer(builtIn.backgroundRenderer, this.cellBackgroundRenderer);
+    this.registerRenderer(builtIn.valueRenderer, this.cellValueRenderer);
+    this.registerRenderer(builtIn.headerRenderer, this.headerCellRenderer);
+    this.loadingIndicator = new Loading({ ctx: this.requireLayer(builtIn.header).ctx });
+    this.cell = {
+      ctx: this.requireLayer(builtIn.content).ctx,
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      row: undefined,
+      column: undefined,
+      value: undefined,
+      formatted: '',
+      updatedAt: undefined,
+      age: Infinity,
+      now: 0,
+      dt: 0,
+      valueChanged: false,
+      forced: false,
+      isScrolling: false,
+      state: {},
+    };
 
     const component = this;
     this.agApi = {
@@ -203,10 +223,68 @@ class CanvasGridComponent extends HTMLElement {
     };
   }
 
-  createLayerCanvas(layerClassName: string) {
-    const canvas = document.createElement('canvas');
-    canvas.className = `${classes.drawingLayer} ${layerClassName}`;
-    return canvas;
+  /** Canvas of the content layer, which also defines the viewport size. */
+  get canvas() {
+    return this.requireLayer(builtIn.content).canvas;
+  }
+
+  get flashInDuration() {
+    return this.cellBackgroundRenderer.options.flashInDuration;
+  }
+
+  set flashInDuration(flashInDuration: number) {
+    this.cellBackgroundRenderer.update({ flashInDuration });
+  }
+
+  get flashOutDuration() {
+    return this.cellBackgroundRenderer.options.flashOutDuration;
+  }
+
+  set flashOutDuration(flashOutDuration: number) {
+    this.cellBackgroundRenderer.update({ flashOutDuration });
+  }
+
+  getLayer(name: string) {
+    return this.layersByName.get(name);
+  }
+
+  private requireLayer(name: string) {
+    const layer = this.getLayer(name);
+    if (!layer) throw new Error(`canvas-grid: no layer named "${name}"`);
+    return layer;
+  }
+
+  /** Adds a canvas on top of the existing layers, or below the layer named in `before`. */
+  addLayer(name: string, { alpha = true, before }: LayerOptions = {}) {
+    if (this.getLayer(name)) throw new Error(`canvas-grid: layer "${name}" already exists`);
+
+    const layer = new Layer(name, { alpha });
+    const next = before === undefined ? undefined : this.requireLayer(before);
+    this.layers.splice(next ? this.layers.indexOf(next) : this.layers.length, 0, layer);
+    this.layersByName.set(name, layer);
+    // the constructor already runs on elements that are in the document, before connectedCallback mounted anything
+    if (this.scrollArea.parentElement === this) {
+      this.insertBefore(layer.canvas, next?.canvas ?? this.scrollArea);
+      layer.resize(this.clientWidth, this.clientHeight);
+      this.forceDraw();
+    }
+    return layer;
+  }
+
+  removeLayer(name: string) {
+    const layer = this.requireLayer(name);
+    this.layers = this.layers.filter(candidate => candidate !== layer);
+    this.layersByName.delete(name);
+    layer.canvas.remove();
+  }
+
+  /** Makes a renderer available to columns under `name`; registering an existing name replaces it. */
+  registerRenderer(name: string, renderer: CellRenderer) {
+    this.renderers.register(name, renderer);
+  }
+
+  unregisterRenderer(name: string) {
+    this.renderers.unregister(name);
   }
 
   createScrollArea() {
@@ -219,7 +297,7 @@ class CanvasGridComponent extends HTMLElement {
   set font(font: string) {
     if (this._font !== font) {
       this._font = font;
-      this.cellValueDrawingLayer.renderer.font = font;
+      this.cellValueRenderer.font = font;
     }
   }
 
@@ -230,7 +308,7 @@ class CanvasGridComponent extends HTMLElement {
   set headerFont(font: string) {
     if (this._headerFont !== font) {
       this._headerFont = font;
-      this.headerDrawingLayer.renderer.font = font;
+      this.headerCellRenderer.font = font;
     }
   }
 
@@ -239,13 +317,8 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   connectedCallback() {
-    this.appendChild(this.backgroundCanvas);
-    this.appendChild(this.canvas);
-    this.appendChild(this.headerCanvas);
+    this.layers.forEach(layer => this.appendChild(layer.canvas));
     this.appendChild(this.scrollArea);
-    window.cellBackgroundDrawingLayer = this.cellBackgroundDrawingLayer;
-    window.cellValueDrawingLayer = this.cellValueDrawingLayer;
-    window.headerDrawingLayer = this.headerDrawingLayer;
 
     this.updateLastRender();
     this.resize();
@@ -264,26 +337,18 @@ class CanvasGridComponent extends HTMLElement {
 
     if (document && document.fonts) {
       document.fonts.onloadingdone = () => {
-        this.cellValueDrawingLayer.clearCache();
-        this.headerDrawingLayer.clearCache();
-        this.cellValueDrawingLayer.preWarmCache();
-        this.headerDrawingLayer.preWarmCache();
+        this.renderers.clearCaches();
         this.resize();
       };
     } else {
       setTimeout(() => {
-        this.cellValueDrawingLayer.clearCache();
-        this.headerDrawingLayer.clearCache();
-        this.cellValueDrawingLayer.preWarmCache();
-        this.headerDrawingLayer.preWarmCache();
+        this.renderers.clearCaches();
         this.resize();
       }, 2000);
     }
 
     const debounceAfterScroll = debounce(() => {
-      this.cellValueDrawingLayer.isScrolling = false;
-      this.cellBackgroundDrawingLayer.isScrolling = false;
-      this.headerDrawingLayer.isScrolling = false;
+      this.isScrolling = false;
     }, 200);
     const throttledUpdate = throttle((scrollYOffset: number, scrollXOffset: number) => {
       this.scrollXOffset = Math.round(scrollXOffset);
@@ -292,9 +357,7 @@ class CanvasGridComponent extends HTMLElement {
     }, 10);
     this.scrollArea.addEventListener('scroll', () => {
       const { scrollTop, scrollLeft } = this.scrollArea;
-      this.cellValueDrawingLayer.isScrolling = true;
-      this.cellBackgroundDrawingLayer.isScrolling = true;
-      this.headerDrawingLayer.isScrolling = true;
+      this.isScrolling = true;
       throttledUpdate(scrollTop, scrollLeft);
     });
   }
@@ -341,8 +404,53 @@ class CanvasGridComponent extends HTMLElement {
     return true;
   }
 
+  /** Fills the shared context for something that is not a data cell: a header, row number or placeholder. */
+  private describe(x: number, y: number, width: number, height: number, overrides: Partial<CellContext>) {
+    return Object.assign(this.cell, {
+      x,
+      y,
+      width,
+      height,
+      row: undefined,
+      column: undefined,
+      value: undefined,
+      formatted: '',
+      updatedAt: undefined,
+      age: Infinity,
+      valueChanged: true,
+      forced: true,
+      state: this.placeholderState,
+    }, overrides);
+  }
+
+  private paint(ref: RendererRef) {
+    const renderer = this.renderers.resolve(ref);
+    const layer = renderer && this.layersByName.get(renderer.layer);
+    if (renderer && !layer && !this.warnedLayers.has(renderer.layer)) {
+      this.warnedLayers.add(renderer.layer);
+      console.warn(`canvas-grid: renderer draws on missing layer "${renderer.layer}"`);
+    }
+    if (!renderer || !layer) return;
+
+    this.cell.ctx = layer.ctx;
+    renderer.draw(this.cell);
+  }
+
+  private paintAll(refs: readonly RendererRef[]) {
+    refs.forEach(ref => this.paint(ref));
+  }
+
+  private isAnimating(refs: readonly RendererRef[]) {
+    return refs.some(ref => this.renderers.resolve(ref)?.isAnimating?.(this.cell) === true);
+  }
+
   draw(forced = false) {
     const now = new Date().valueOf();
+    const redrawAll = forced || this.hasScrolled();
+    this.cell.now = now;
+    this.cell.dt = now - this.lastDraw;
+    this.cell.isScrolling = this.isScrolling;
+    this.lastDraw = now;
 
     if ((forced || this.hasXScrolled()) && this.showHeaders) {
       this.renderHeaders();
@@ -359,23 +467,19 @@ class CanvasGridComponent extends HTMLElement {
       this.loadingIndicator.render();
       for (let fakeRowIndex= 0; fakeRowIndex <= fakeRows; fakeRowIndex++)  {
         this.headers.forEach(header => {
-          header.cellRenderer(
-            '',
+          this.describe(
             Math.round((header.index * header.width) + (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset),
             Math.round((fakeRowIndex * this.cellHeight) + (this.showHeaders ? this.headerHeight : 0) - this.scrollYOffset),
             header.width,
             this.cellHeight,
-            true,
-            false,
-            true,
-            0
+            { column: header, valueChanged: false },
           );
+          this.paintAll(header.renderers ?? this.cellRenderers);
         });
       }
     }
 
     let currentY = Math.round((this.showHeaders ? this.headerHeight : 0) - this.scrollYOffset);
-    const updateUntil = now - (this.flashInDuration + this.flashOutDuration + 100);
     const xOffset = Math.round((this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset);
     this._dataCollection.forEach((row, key) => {
       const { columns } = row;
@@ -386,37 +490,43 @@ class CanvasGridComponent extends HTMLElement {
       }
 
       if (row.height + currentY > 0 && currentY < this.canvas.height) {
-        let prevRow = this.prevValues.get(key);
-        if (!prevRow) {
-          prevRow = {};
-          this.prevValues.set(key, prevRow);
+        let entries = this.cellEntries.get(key);
+        if (!entries) {
+          entries = {};
+          this.cellEntries.set(key, entries);
         }
+        const cellRow = { id: key, index: row.index };
 
         columns.forEach((column, columnKey) => {
-          const { displayedValue, updatedAt = 0 } = column;
+          const { value, displayedValue, updatedAt } = column;
           const header = this.getColumnHeader(columnKey);
-          const shouldUpdate = updatedAt > updateUntil;
+          if (!header) return;
 
-          if (header) {
-            const isNotPrev = prevRow[columnKey] !== displayedValue;
-            if (this.isInViewport(currentX, currentY, header.width, row.height) && (forced || this.hasScrolled() || shouldUpdate)) {
-              header.cellRenderer(
-                displayedValue,
-                currentX,
-                currentY,
-                header.width,
-                row.height,
-                shouldUpdate || this.hasScrolled() || forced,
-                isNotPrev,
-                forced || this.hasScrolled(),
-                now - updatedAt
-              );
-            }
-            if (isNotPrev) {
-              prevRow[columnKey] = displayedValue;
-            }
-            currentX += Math.round(header.width);
+          const entry = entries[columnKey] ??= { value: undefined, animating: false, state: {} };
+          const valueChanged = entry.value !== displayedValue;
+          if (this.isInViewport(currentX, currentY, header.width, row.height)) {
+            const { cell } = this;
+            cell.x = currentX;
+            cell.y = currentY;
+            cell.width = header.width;
+            cell.height = row.height;
+            cell.row = cellRow;
+            cell.column = header;
+            cell.value = value;
+            cell.formatted = displayedValue;
+            cell.updatedAt = updatedAt;
+            cell.age = updatedAt === undefined ? Infinity : now - updatedAt;
+            cell.valueChanged = valueChanged;
+            cell.forced = redrawAll;
+            cell.state = entry.state;
+            const refs = header.renderers ?? this.cellRenderers;
+            const animating = this.isAnimating(refs);
+            // an animation gets one last frame after it stops, so its final state is what stays on screen
+            if (redrawAll || valueChanged || animating || entry.animating) this.paintAll(refs);
+            entry.animating = animating;
           }
+          entry.value = displayedValue;
+          currentX += Math.round(header.width);
         });
       }
       currentY += Math.round(row.height);
@@ -430,32 +540,21 @@ class CanvasGridComponent extends HTMLElement {
 
   renderRowNumber(row: { index: number; height?: number }, y: number) {
     if (!this.isInViewport(0, y, this.rowNumbersWidth, row.height)) return;
-    this.headerDrawingLayer.render({
-      value: `${row.index + 1}`,
-      x: 0,
-      y: Math.ceil(y),
-      width: this.rowNumbersWidth,
-      height: row.height,
-      isUpdated: true,
-      isValueUpdated: true,
+    this.describe(0, Math.ceil(y), this.rowNumbersWidth, row.height ?? 0, {
+      row: { id: row.index, index: row.index },
+      formatted: `${row.index + 1}`,
     });
+    this.paint(builtIn.headerRenderer);
   }
 
   forceDraw() {
-    this.cellValueDrawingLayer.clear();
-    this.cellBackgroundDrawingLayer.clear();
-    this.headerDrawingLayer.clear();
+    this.layers.forEach(layer => layer.clear());
     this.draw(true);
   }
 
   resize() {
     this.cancelRender();
-    this.canvas.width = this.clientWidth;
-    this.canvas.height = this.clientHeight;
-    this.headerCanvas.width = this.clientWidth;
-    this.headerCanvas.height = this.clientHeight;
-    this.backgroundCanvas.width = this.clientWidth;
-    this.backgroundCanvas.height = this.clientHeight;
+    this.layers.forEach(layer => layer.resize(this.clientWidth, this.clientHeight));
     this.forceDraw();
     this.render();
   }
@@ -466,28 +565,9 @@ class CanvasGridComponent extends HTMLElement {
 
   renderBrick() {
     if (this.showHeaders && this.showRowNumbers && this._headerBackgroundColor) {
-      this.headerDrawingLayer.render({
-        value: '',
-        x: 0,
-        y: 0,
-        width: this.rowNumbersWidth,
-        height: this.headerHeight,
-        isUpdated: true,
-        isValueUpdated: true,
-      });
+      this.describe(0, 0, this.rowNumbersWidth, this.headerHeight, {});
+      this.paint(builtIn.headerRenderer);
     }
-  }
-
-  renderHeader(header: ColumnHeader, x: number) {
-    this.headerDrawingLayer.render({
-      value: header.displayName,
-      x,
-      y: 0,
-      width: header.width,
-      height: this.headerHeight,
-      isUpdated: true,
-      isValueUpdated: true,
-    });
   }
 
   renderHeaders() {
@@ -495,7 +575,11 @@ class CanvasGridComponent extends HTMLElement {
 
     this.headers.forEach(header => {
       if (this.isInViewport(currentX, 0, header.width, this.headerHeight)) {
-        header.headerRenderer(header, currentX);
+        this.describe(currentX, 0, header.width, this.headerHeight, {
+          column: header,
+          formatted: header.displayName ?? '',
+        });
+        this.paint(header.headerRenderer);
       }
       currentX += header.width;
     });
@@ -553,7 +637,7 @@ class CanvasGridComponent extends HTMLElement {
 
   clearValues() {
     this.dataStore.clear();
-    this.prevValues.clear();
+    this.cellEntries.clear();
   }
 
   formatValue(key: Key, value: unknown) {
@@ -569,30 +653,13 @@ class CanvasGridComponent extends HTMLElement {
     this.forceDraw();
   }
 
-  renderCell(
-    value: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    isUpdated: boolean,
-    isValueUpdated: boolean,
-    forcedDraw: boolean,
-    diff: number,
-  ) {
-    const props = { value, x, y, width, height, isUpdated, isValueUpdated, forcedDraw, diff };
-    this.cellBackgroundDrawingLayer.render(props);
-    this.cellValueDrawingLayer.render(props);
-  }
-
   setColumns(columns: ColumnDefinition[]) {
     if (Array.isArray(columns)) {
       this.headers.clear();
       const defaults = {
         width: 100,
-        cellRenderer: this.renderCell,
         valueFormatter: (v: unknown) => String(v),
-        headerRenderer: this.renderHeader,
+        headerRenderer: builtIn.headerRenderer,
       };
       columns.forEach((column, index) => {
         if (typeof column === 'string' || typeof column === 'number') {

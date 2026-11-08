@@ -3,35 +3,22 @@ import { primitive } from './jsx';
 import type { RenderProps } from '../types';
 
 abstract class Renderer<Options extends object> {
-  private readonly actualOptions: Options;
-
-  private readonly optionsProxy: Options;
+  readonly options: Options;
 
   protected constructor(options: Options) {
-    this.actualOptions = { ...options };
-    this.optionsProxy = new Proxy(this.actualOptions, {
-      set: (target, key, value) => {
-        const prevOptions = { ...target };
-        const result = Reflect.set(target, key, value);
-        this.optionsUpdated(prevOptions);
-        return result;
-      },
-    });
+    this.options = { ...options };
   }
 
-  set options(options: Partial<Options>) {
-    Object.assign(this.optionsProxy, options);
+  /** Applies the given options and notifies `optionsUpdated` with the previous ones. */
+  update(options: Partial<Options>) {
+    const previous = { ...this.options };
+    Object.assign(this.options, options);
+    this.optionsUpdated(previous);
   }
 
-  get options(): Options {
-    return this.optionsProxy;
-  }
-
-  optionsUpdated(_prevOptions: Options) {}
+  optionsUpdated(_previous: Options) {}
 
   clearCache() {}
-
-  preWarmCache() {}
 }
 
 /**
