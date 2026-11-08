@@ -148,6 +148,8 @@ npm run serve-local  # run only the example data server
 
 Releases are published to npm from CI when a `vX.Y.Z` tag is pushed (see `.github/workflows/publish.yml`).
 
+Pull requests also run the scroll benchmark against the base commit in CI (`.github/workflows/benchmark.yml`): base and head alternate three times on the same runner, and the job summary shows the median change. It fails on a regression of more than 30% in FPS or p95 frame time. Locally: `node scripts/compare-benchmarks.mts <path-to-base-checkout>`.
+
 ## Security
 
 See [SECURITY.md](.github/SECURITY.md).

@@ -1,7 +1,12 @@
+import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
+/** Directory serving components/ and benchmarks/scroll/; defaults to this repository, set it to measure another checkout. */
+const root = resolve(process.env.SCROLL_ROOT ?? resolve(import.meta.dirname, '..'));
+/** Optional path to also write the result to as JSON. */
+const outputPath = process.env.SCROLL_OUTPUT;
 const rows = Number(process.env.SCROLL_ROWS ?? 100_000);
 const columns = Number(process.env.SCROLL_COLUMNS ?? 20);
 const durationMs = Number(process.env.SCROLL_DURATION_MS ?? 5000);
@@ -20,7 +25,7 @@ interface ScrollResult {
 
 const server = await createServer({
   configFile: false,
-  root: resolve(import.meta.dirname, '..'),
+  root,
   logLevel: 'error',
   server: { host: '127.0.0.1', port: 0 },
 });
@@ -67,6 +72,7 @@ try {
 
   console.log(`Scroll benchmark: ${rows} rows x ${columns} columns, ${step}px per frame`);
   console.table([result]);
+  if (outputPath) await writeFile(outputPath, JSON.stringify(result, undefined, 2));
 } finally {
   await browser.close();
   await server.close();
