@@ -11,7 +11,7 @@ const setOutput = (name: string, value: string) => {
 };
 
 const fetchPublishedVersions = async (packageName: string) => {
-  const response = await fetch(`https://registry.npmjs.org/${packageName.replace('/', '%2f')}`);
+  const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`);
   if (response.status === 404) return [];
   if (!response.ok) throw new Error(`npm registry responded with ${response.status}`);
 
