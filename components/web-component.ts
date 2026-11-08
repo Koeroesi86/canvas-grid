@@ -322,29 +322,14 @@ class CanvasGridComponent extends HTMLElement {
 
     this.updateLastRender();
     this.resize();
-    this.setColumns(Array(50).fill(1).map((_, index) => index));
+    if (this.headers.length === 0) this.setColumns(Array(50).fill(1).map((_, index) => index));
 
-    document.addEventListener('visibilitychange', () => {
-      switch (document.visibilityState) {
-        case 'hidden':
-          this.cancelRender();
-          break;
-        case 'visible':
-        default:
-          this.resize();
-      }
-    });
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
 
-    if (document && document.fonts) {
-      document.fonts.onloadingdone = () => {
-        this.renderers.clearCaches();
-        this.resize();
-      };
+    if (document.fonts) {
+      document.fonts.addEventListener('loadingdone', this.onFontsLoaded);
     } else {
-      setTimeout(() => {
-        this.renderers.clearCaches();
-        this.resize();
-      }, 2000);
+      this.fontsTimeout = setTimeout(this.onFontsLoaded, 2000);
     }
 
     const debounceAfterScroll = debounce(() => {
@@ -361,6 +346,21 @@ class CanvasGridComponent extends HTMLElement {
       throttledUpdate(scrollTop, scrollLeft);
     });
   }
+
+  private fontsTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
+
+  private readonly onVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+      this.cancelRender();
+      return;
+    }
+    this.resize();
+  };
+
+  private readonly onFontsLoaded = () => {
+    this.renderers.clearCaches();
+    this.resize();
+  };
 
   cancelRender() {
     if (this.animationFrame !== undefined) cancelAnimationFrame(this.animationFrame);
@@ -678,18 +678,17 @@ class CanvasGridComponent extends HTMLElement {
             ...column,
           });
         }
-        this.refreshScrollbar();
-        this.forceDraw();
       });
+      this.refreshScrollbar();
+      this.forceDraw();
     }
   }
 
   disconnectedCallback() {
     this.cancelRender();
-  }
-
-  attributeChangedCallback(attrName: string, oldVal: string | null, newVal: string | null) {
-    console.log('attributeChangedCallback', attrName, oldVal, newVal)
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    document.fonts?.removeEventListener('loadingdone', this.onFontsLoaded);
+    clearTimeout(this.fontsTimeout);
   }
 }
 

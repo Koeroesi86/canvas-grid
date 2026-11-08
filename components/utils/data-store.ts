@@ -12,11 +12,16 @@ export interface DataStoreEnvironment {
   getCellHeight: () => number;
 }
 
+interface PendingChange {
+  type: 'update' | 'remove';
+  row: RowInput;
+}
+
 /** Row storage plus the queued add/update/remove handling, independent of the DOM. */
 class DataStore {
   rows = new Collection<Row>();
-  pendingUpdates = new Collection<RowInput>();
-  pendingRemoves = new Collection<RowInput>();
+  /** Queued changes, applied in the order they were made. */
+  private pending: PendingChange[] = [];
 
   private environment: DataStoreEnvironment;
 
@@ -25,7 +30,7 @@ class DataStore {
   }
 
   get hasPending() {
-    return this.pendingUpdates.length > 0 || this.pendingRemoves.length > 0;
+    return this.pending.length > 0;
   }
 
   private createColumns(row: RowInput, updatedAt: number | undefined) {
@@ -37,11 +42,11 @@ class DataStore {
   }
 
   queueUpdate(row: RowInput) {
-    this.pendingUpdates.add(row);
+    this.pending.push({ type: 'update', row });
   }
 
   queueRemove(row: RowInput) {
-    this.pendingRemoves.add(row);
+    this.pending.push({ type: 'remove', row });
   }
 
   clear() {
@@ -50,8 +55,7 @@ class DataStore {
 
   /** Replaces everything, dropping any queued changes. */
   setRows(data: RowInput[]) {
-    this.pendingUpdates.clear();
-    this.pendingRemoves.clear();
+    this.pending = [];
     this.rows.clear();
     data.forEach((row, index) => {
       this.rows.set(this.environment.getRowId(row, index), {
@@ -62,20 +66,11 @@ class DataStore {
     });
   }
 
-  applyUpdates(now = getNow()) {
-    this.pendingUpdates.forEach(row => this.applyUpdate(row, now));
-    this.pendingUpdates.clear();
-  }
-
-  applyRemovals() {
-    this.pendingRemoves.forEach(row => this.rows.delete(this.environment.getRowId(row)));
-    this.pendingRemoves.clear();
-  }
-
-  /** Applies queued updates, then removals. */
+  /** Applies the queued changes in the order they were queued. */
   flush(now = getNow()) {
-    if (this.pendingUpdates.length > 0) this.applyUpdates(now);
-    if (this.pendingRemoves.length > 0) this.applyRemovals();
+    const changes = this.pending;
+    this.pending = [];
+    changes.forEach(({ type, row }) => type === 'update' ? this.applyUpdate(row, now) : this.rows.delete(this.environment.getRowId(row)));
   }
 
   private applyUpdate(row: RowInput, now: number) {
