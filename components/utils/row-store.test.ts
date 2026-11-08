@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import Collection from './collection';
 import RowStore from './row-store';
-import type { ColumnData } from '../types';
 
-const row = (id: number | string, height = 20) => ({ id, height, columns: new Collection<ColumnData>() });
+const row = (id: number | string, height = 20) => ({ id, height });
 
 describe('RowStore', () => {
   let store: RowStore;
@@ -55,18 +53,19 @@ describe('RowStore', () => {
   });
 
   describe('removeMany', () => {
-    it('removes rows and renumbers the ones after them', () => {
-      store.removeMany([1, 3]);
+    it('removes rows, renumbers the ones after them and returns the removed slots', () => {
+      expect(store.removeMany([3, 1])).toEqual([1, 3]);
       expect(store.keys).toEqual([0, 2, 4]);
       expect(store.get(2)?.index).toBe(1);
       expect(store.get(4)?.index).toBe(2);
+      expect([0, 2, 4].map(id => store.get(id)?.slot)).toEqual([0, 1, 2]);
       expect(store.topOf(2)).toBe(40);
       expect(store.totalHeight).toBe(60);
       expect(store.get(1)).toBeUndefined();
     });
 
     it('ignores unknown ids', () => {
-      store.removeMany([99]);
+      expect(store.removeMany([99])).toEqual([]);
       expect(store.length).toBe(5);
     });
 
@@ -76,6 +75,21 @@ describe('RowStore', () => {
       expect(store.keys).toEqual([1, 2, 3, 4, 0]);
       expect(store.get(0)?.index).toBe(4);
     });
+  });
+
+  it('sorts without changing slots, and renumbers positions and offsets', () => {
+    store.sort((a, b) => Number(b.id) - Number(a.id));
+    expect(store.keys).toEqual([4, 3, 2, 1, 0]);
+    expect(store.get(4)).toMatchObject({ index: 0, slot: 4 });
+    expect(store.topOf(1)).toBe(20);
+    expect(store.indexAt(25)).toBe(1);
+  });
+
+  it('removes rows from a sorted store and keeps slots dense', () => {
+    store.sort((a, b) => Number(b.id) - Number(a.id));
+    expect(store.removeMany([2])).toEqual([2]);
+    expect(store.keys).toEqual([4, 3, 1, 0]);
+    expect([4, 3, 1, 0].map(id => store.get(id)?.slot)).toEqual([3, 2, 1, 0]);
   });
 
   it('clears everything', () => {

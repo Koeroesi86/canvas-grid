@@ -4,11 +4,9 @@ import type { RowInput } from '../types';
 
 const createStore = () => new DataStore({
   getRowId: row => row.id,
-  formatValue: (_key, value) => `<${String(value)}>`,
   getCellHeight: () => 20,
 });
 
-const cellValue = (store: DataStore, rowId: string | number, column: string) => store.rows.get(rowId)?.columns.get(column);
 
 describe('DataStore', () => {
   let store: DataStore;
@@ -18,11 +16,19 @@ describe('DataStore', () => {
   });
 
   describe('setRows', () => {
-    it('stores rows by id with index, height and formatted columns', () => {
+    it('stores rows by id with index and height, and the values by column', () => {
       store.setRows([{ id: 'a', name: 'x' }, { id: 'b', name: 'y' }]);
       expect(store.rows.keys).toEqual(['a', 'b']);
-      expect(store.rows.get('b')).toMatchObject({ index: 1, height: 20 });
-      expect(cellValue(store, 'a', 'name')).toEqual({ column: 'name', value: 'x', displayedValue: '<x>', updatedAt: undefined });
+      expect(store.rows.get('b')).toMatchObject({ index: 1, slot: 1, height: 20 });
+      expect(store.getValue('a', 'name')).toBe('x');
+      expect(store.getValue('b', 'name')).toBe('y');
+      expect(store.getUpdatedAt('a', 'name')).toBeUndefined();
+    });
+
+    it('keeps the values as they are, without formatting them', () => {
+      store.setRows([{ id: 1, price: 2.5, flag: false }]);
+      expect(store.getValue(1, 'price')).toBe(2.5);
+      expect(store.getValue(1, 'flag')).toBe(false);
     });
 
     it('replaces previous rows and drops queued changes', () => {
@@ -47,30 +53,32 @@ describe('DataStore', () => {
       store.queueUpdate({ id: 2, value: 'b' });
       store.flush(1000);
       expect(store.rows.get(2)?.index).toBe(1);
-      expect(cellValue(store, 2, 'value')?.updatedAt).toBe(1000);
+      expect(store.getUpdatedAt(2, 'value')).toBe(1000);
       expect(store.hasPending).toBe(false);
     });
 
-    it('updates changed values, reformats and stamps updatedAt', () => {
+    it('updates changed values and stamps updatedAt', () => {
       store.setRows([{ id: 1, value: 'a' }]);
       store.queueUpdate({ id: 1, value: 'b' });
       store.flush(2000);
-      expect(cellValue(store, 1, 'value')).toMatchObject({ value: 'b', displayedValue: '<b>', updatedAt: 2000 });
+      expect(store.getValue(1, 'value')).toBe('b');
+      expect(store.getUpdatedAt(1, 'value')).toBe(2000);
     });
 
     it('leaves unchanged values and their timestamp alone', () => {
       store.setRows([{ id: 1, value: 'a' }]);
       store.queueUpdate({ id: 1, value: 'a' });
       store.flush(3000);
-      expect(cellValue(store, 1, 'value')?.updatedAt).toBeUndefined();
+      expect(store.getUpdatedAt(1, 'value')).toBeUndefined();
     });
 
     it('adds columns that did not exist on the row', () => {
       store.setRows([{ id: 1, value: 'a' }]);
       store.queueUpdate({ id: 1, extra: 'z' });
       store.flush(4000);
-      expect(cellValue(store, 1, 'extra')).toMatchObject({ value: 'z', displayedValue: '<z>' });
-      expect(cellValue(store, 1, 'value')?.value).toBe('a');
+      expect(store.getValue(1, 'extra')).toBe('z');
+      expect(store.getValue(1, 'value')).toBe('a');
+      expect(store.getUpdatedAt(1, 'extra')).toBeUndefined();
     });
 
     it('applies several queued updates to the same row in order', () => {
@@ -78,7 +86,7 @@ describe('DataStore', () => {
       store.queueUpdate({ id: 1, value: 'b' });
       store.queueUpdate({ id: 1, value: 'c' });
       store.flush();
-      expect(cellValue(store, 1, 'value')?.value).toBe('c');
+      expect(store.getValue(1, 'value')).toBe('c');
     });
 
     it('removes rows and ignores unknown ids', () => {
@@ -95,7 +103,28 @@ describe('DataStore', () => {
       store.queueRemove({ id: 1 });
       store.queueUpdate({ id: 1, value: 'b' });
       store.flush();
-      expect(cellValue(store, 1, 'value')?.value).toBe('b');
+      expect(store.getValue(1, 'value')).toBe('b');
+    });
+
+    it('keeps every row with its own values when rows in the middle are removed', () => {
+      store.setRows([{ id: 1, v: 'a' }, { id: 2, v: 'b' }, { id: 3, v: 'c' }, { id: 4, v: 'd' }]);
+      store.queueRemove({ id: 2 });
+      store.queueRemove({ id: 3 });
+      store.flush();
+      expect(store.rows.keys).toEqual([1, 4]);
+      expect(store.getValue(1, 'v')).toBe('a');
+      expect(store.getValue(4, 'v')).toBe('d');
+      expect(store.rows.get(4)).toMatchObject({ index: 1, slot: 1 });
+    });
+
+    it('keeps update times with their rows when rows are removed', () => {
+      store.setRows([{ id: 1, v: 'a' }, { id: 2, v: 'b' }, { id: 3, v: 'c' }]);
+      store.queueUpdate({ id: 3, v: 'C' });
+      store.flush(500);
+      store.queueRemove({ id: 1 });
+      store.flush(600);
+      expect(store.getUpdatedAt(3, 'v')).toBe(500);
+      expect(store.getUpdatedAt(2, 'v')).toBeUndefined();
     });
 
     it('reports whether rows were removed', () => {
@@ -128,14 +157,84 @@ describe('DataStore', () => {
     it('uses the configured row id getter', () => {
       const custom = new DataStore({
         getRowId: (row: RowInput) => String(row.key),
-        formatValue: (_key, value) => String(value),
         getCellHeight: () => 10,
       });
       custom.setRows([{ id: 0, key: 'k1', v: 1 }]);
       custom.queueUpdate({ id: 0, key: 'k1', v: 2 });
       custom.flush();
       expect(custom.rows.keys).toEqual(['k1']);
-      expect(custom.rows.get('k1')?.columns.get('v')?.value).toBe(2);
+      expect(custom.getValue('k1', 'v')).toBe(2);
+    });
+  });
+
+  describe('sort model', () => {
+    const rows = [
+      { id: 1, name: 'pear', price: 3 },
+      { id: 2, name: 'apple', price: 10 },
+      { id: 3, name: 'fig', price: 2 },
+      { id: 4, name: 'apple', price: 1 },
+    ];
+
+    beforeEach(() => {
+      store.setRows(rows);
+    });
+
+    it('orders rows by a column and numbers them by position', () => {
+      store.setSortModel([{ columnId: 'price' }]);
+      expect(store.rows.keys).toEqual([4, 3, 1, 2]);
+      expect(store.rows.get(4)?.index).toBe(0);
+      expect(store.getValue(4, 'price')).toBe(1);
+    });
+
+    it('sorts descending, by several columns, and keeps ties in the original order', () => {
+      store.setSortModel([{ columnId: 'name' }, { columnId: 'price', direction: 'desc' }]);
+      expect(store.rows.keys).toEqual([2, 4, 3, 1]);
+      store.setSortModel([{ columnId: 'name' }]);
+      expect(store.rows.keys).toEqual([2, 4, 3, 1]);
+    });
+
+    it('restores the original order with an empty model', () => {
+      store.setSortModel([{ columnId: 'price' }]);
+      store.setSortModel([]);
+      expect(store.rows.keys).toEqual([1, 2, 3, 4]);
+    });
+
+    it('uses a custom comparison', () => {
+      store.setSortModel([{ columnId: 'name', compare: (a, b) => String(a).length - String(b).length }]);
+      expect(store.rows.keys.slice(0, 2)).toEqual([3, 1]);
+    });
+
+    it('compares numbers numerically, then text, with empty values last', () => {
+      const mixed = createStore();
+      mixed.setRows([{ id: 1, v: 'b' }, { id: 2, v: 10 }, { id: 3 }, { id: 4, v: 9 }, { id: 5, v: 'a' }]);
+      mixed.setSortModel([{ columnId: 'v' }]);
+      expect(mixed.rows.keys).toEqual([4, 2, 5, 1, 3]);
+    });
+
+    it('re-sorts when an update changes the sorted column, and reports that rows moved', () => {
+      store.setSortModel([{ columnId: 'price' }]);
+      store.queueUpdate({ id: 4, price: 100 });
+      expect(store.flush()).toBe(true);
+      expect(store.rows.keys).toEqual([3, 1, 2, 4]);
+    });
+
+    it('places new rows in order and does not re-sort for unrelated updates', () => {
+      store.setSortModel([{ columnId: 'price' }]);
+      store.queueUpdate({ id: 5, name: 'kiwi', price: 5 });
+      expect(store.flush()).toBe(true);
+      expect(store.rows.keys).toEqual([4, 3, 1, 5, 2]);
+
+      store.queueUpdate({ id: 1, name: 'plum' });
+      expect(store.flush()).toBe(false);
+    });
+
+    it('keeps the sort when rows are replaced or removed', () => {
+      store.setSortModel([{ columnId: 'price' }]);
+      store.queueRemove({ id: 3 });
+      store.flush();
+      expect(store.rows.keys).toEqual([4, 1, 2]);
+      store.setRows(rows);
+      expect(store.rows.keys).toEqual([4, 3, 1, 2]);
     });
   });
 });

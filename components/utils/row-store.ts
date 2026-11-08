@@ -1,12 +1,12 @@
-import type Collection from './collection';
-import type { ColumnData, Key, RowData, RowId } from '../types';
+import type { Key, RowData, RowId } from '../types';
 
-export type Row = RowData<Collection<ColumnData>> & { id: RowId };
+export type Row = RowData;
 
 /**
  * Rows in display order: a dense array with an id lookup and each row's top offset,
  * so appends, lookups and finding the row at a scroll offset never scan every row.
  * Removing rows renumbers the rows after the first removed one (once per call).
+ * Rows keep a `slot` into the column stores that does not change when the rows are sorted.
  */
 class RowStore {
   private items: Row[] = [];
@@ -60,33 +60,56 @@ class RowStore {
   }
 
   /** Appends the row, or replaces the row with the same id in place. */
-  set(row: Omit<Row, 'index'>) {
+  set(row: Omit<Row, 'index' | 'slot'>) {
     const existing = this.indexById.get(String(row.id));
     if (existing !== undefined) {
-      this.items[existing] = { ...row, index: existing };
+      this.items[existing] = { ...row, index: existing, slot: this.items[existing].slot };
       this.reindexFrom(existing);
       return;
     }
 
     const index = this.items.length;
-    this.items.push({ ...row, index });
+    this.items.push({ ...row, index, slot: index });
     this.indexById.set(String(row.id), index);
     this.tops.push(this.end);
     this.end += Math.round(row.height);
   }
 
-  /** Removes every row with one of the ids, ignoring unknown ids; returns whether any row was removed. */
-  removeMany(ids: Key[]) {
-    if (ids.length === 0) return false;
+  /**
+   * Removes the rows with the given ids, ignoring unknown ones.
+   * Returns the slots of the removed rows in ascending order, which the column stores must drop too.
+   */
+  removeMany(ids: Key[]): number[] {
+    const removed = new Set<Row>();
+    ids.forEach(id => {
+      const row = this.get(id);
+      if (row) removed.add(row);
+    });
+    if (removed.size === 0) return [];
 
-    const removed = new Set(ids.map(String));
-    const first = this.items.findIndex(row => removed.has(String(row.id)));
-    if (first === -1) return false;
+    const slots = Array.from(removed, row => row.slot).sort((a, b) => a - b);
+    const first = Array.from(removed).reduce((lowest, row) => Math.min(lowest, row.index), Infinity);
+    removed.forEach(row => this.indexById.delete(String(row.id)));
+    this.items = this.items.filter(row => !removed.has(row));
 
-    removed.forEach(id => this.indexById.delete(id));
-    this.items = this.items.filter(row => !removed.has(String(row.id)));
+    // slots stay dense: every row moves down by the number of removed slots below it
+    const shiftAt = new Int32Array(this.items.length + slots.length);
+    for (let slot = 0, next = 0; slot < shiftAt.length; slot++) {
+      if (slots[next] === slot) next++;
+      shiftAt[slot] = next;
+    }
+    this.items.forEach(row => {
+      row.slot -= shiftAt[row.slot];
+    });
+
     this.reindexFrom(first);
-    return true;
+    return slots;
+  }
+
+  /** Reorders the rows; the sort is stable, so equal rows keep their relative order. */
+  sort(compare: (a: Row, b: Row) => number) {
+    this.items.sort(compare);
+    this.reindexFrom(0);
   }
 
   clear() {

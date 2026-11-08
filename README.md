@@ -77,7 +77,7 @@ Column object fields (`ColumnDefinition`):
 | `id` | required | Key of the row property shown in this column |
 | `displayName` | – | Header text. Not derived from `id` for object columns |
 | `width` | `100` | Column width in px |
-| `valueFormatter` | `String(value)` | Converts the raw value to the displayed string |
+| `valueFormatter` | `String(value)` | Converts the raw value to the displayed string. Runs lazily, only for cells being drawn, and again only when the cell's value changes |
 | `renderers` | grid's `cellRenderers` | Renderers drawing a cell of this column, in order. Names of [registered renderers](#custom-renderers-and-layers) or renderer objects |
 | `headerRenderer` | `'header'` | Renderer drawing this column's header (name or object) |
 
@@ -90,7 +90,8 @@ Column object fields (`ColumnDefinition`):
 | `queueUpdate(row)` | Adds or updates a row (merged by `id`); only the given columns change |
 | `queueRemove(row)` | Removes the row with the same `id` |
 | `transaction({ add, update, remove })` | Batch form of the above |
-| `getRowData(id)` | Returns the internal row record |
+| `getRowData(id)` | `{ id, index, height, values }` for a row (`index` is its displayed position, `values` the raw values by column id), or `undefined` |
+| `setSortModel(keys)` / `getSortModel()` | Orders the rows, see [Sorting](#sorting). An empty list restores the original order |
 | `forceDraw()` | Clears and redraws everything |
 | `registerRenderer(name, renderer)` | Makes a [renderer](#custom-renderers-and-layers) available to columns by name; an existing name is replaced |
 | `unregisterRenderer(name)` | Removes a registered renderer |
@@ -115,6 +116,17 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 | `cellRenderers` | `['background', 'value']` | Renderers used by columns without their own `renderers` |
 | `flashInDuration` | `200` | Fade-in of the update flash in ms |
 | `flashOutDuration` | `400` | Fade-out of the update flash in ms |
+
+### Sorting
+
+```js
+grid.setSortModel([
+  { columnId: 'price', direction: 'desc' },
+  { columnId: 'name' },
+]);
+```
+
+Keys apply in priority order; rows equal on every key keep their original order. By default numbers compare numerically, text with `Intl.Collator`, and empty values come last; a key can bring its own `compare(a, b)`. Row numbers follow the displayed order. The order is kept as rows are added or updated: new rows are placed by the model, and an update to a sorted column moves the row (re-sorting runs with the throttled updates, so it costs O(n log n) per batch). `setSortModel` works on raw values, so it does not depend on `valueFormatter`.
 
 ### Custom renderers and layers
 
@@ -158,7 +170,7 @@ A renderer is an object:
 | `valueChanged` | The formatted value differs from what was drawn last time |
 | `forced` | Everything is being redrawn (first draw, resize, scrolling) |
 | `isScrolling` | The grid is being scrolled |
-| `state` | Object that persists per cell between frames, for your own bookkeeping |
+| `state` | Object that persists per cell between frames, for your own bookkeeping. Kept for the 2048 most recently drawn rows, so it resets for a row that was scrolled far away |
 
 A renderer that animates, for example a pulse that lasts one second after a change:
 
@@ -192,7 +204,7 @@ grid.agApi.getRowNodeId = row => row.key;
 
 ### TypeScript
 
-Types ship with the package. Besides the element class (default export) it exports `ColumnHeader`, `ColumnDefinition`, `Transaction`, `CellRenderer`, `CellContext`, `CellState`, `RendererRef` and `LayerOptions`, and registers `canvas-grid` in `HTMLElementTagNameMap`, so `document.querySelector('canvas-grid')` is typed.
+Types ship with the package. Besides the element class (default export) it exports `ColumnHeader`, `ColumnDefinition`, `Transaction`, `CellRenderer`, `CellContext`, `CellState`, `RendererRef`, `LayerOptions`, `SortKey` and `SortDirection`, and registers `canvas-grid` in `HTMLElementTagNameMap`, so `document.querySelector('canvas-grid')` is typed.
 
 > The declarations are single-format. Bundler-style resolution (`moduleResolution: "bundler"`) works; strict Node16 ESM resolution may report the types as CommonJS.
 
