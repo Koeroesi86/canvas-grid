@@ -1,41 +1,34 @@
 import React from '../utils/jsx';
 import Renderer from '../utils/renderer';
-import { getContext2d } from '../utils/canvas';
 import TextRenderer from '../text';
-import type { PositionalRenderer, RenderProps } from '../types';
+import type { CellContext, CellRenderer } from '../types';
 
 export interface CellValueOptions {
-  canvas: HTMLCanvasElement;
-  alpha: boolean;
+  layer: string;
   font: string;
   color: string;
-  characters: string;
 }
 
-export default class CellValueRenderer extends Renderer<CellValueOptions> implements PositionalRenderer {
-  static readonly defaultOptions: Omit<CellValueOptions, 'canvas'> = {
-    alpha: true,
+export default class CellValueRenderer extends Renderer<CellValueOptions> implements CellRenderer {
+  static readonly defaultOptions: CellValueOptions = {
+    layer: 'content',
     font: '12px monospace',
     color: '#fff',
-    characters: '',
   };
-
-  isScrolling = false;
 
   private readonly renderer: TextRenderer;
 
-  private readonly ctx: CanvasRenderingContext2D;
-
-  constructor(options: Pick<CellValueOptions, 'canvas'> & Partial<CellValueOptions>) {
+  constructor(options: Partial<CellValueOptions> = {}) {
     super({ ...CellValueRenderer.defaultOptions, ...options });
 
     this.renderer = new TextRenderer({
       font: this.options.font,
       color: this.options.color,
-      characters: this.options.characters,
     });
+  }
 
-    this.ctx = getContext2d(this.options.canvas, { alpha: this.options.alpha });
+  get layer() {
+    return this.options.layer;
   }
 
   set font(font: string) {
@@ -60,10 +53,10 @@ export default class CellValueRenderer extends Renderer<CellValueOptions> implem
     this.renderer.clearCache();
   }
 
-  render({ value = '', x = 0, y = 0, width = 0, height = 0, isValueUpdated = false, forcedDraw = false }: RenderProps) {
-    if (!isValueUpdated && !forcedDraw) return;
+  draw({ ctx, x, y, width, height, formatted, valueChanged, forced }: Readonly<CellContext>) {
+    if (!valueChanged && !forced) return;
 
-    this.ctx.clearRect(x, y, width, height);
-    (<this.renderer.element value={value} width={width} height={height} />).draw(this.ctx, x, y);
+    ctx.clearRect(x, y, width, height);
+    (<this.renderer.element value={formatted} width={width} height={height} />).draw(ctx, x, y);
   }
 }
