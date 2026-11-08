@@ -39,11 +39,12 @@ export const createConfig = (mode: BuildMode): Configuration => {
     module: {
       rules: [
         {
-          test: /\.[jt]sx?$/,
+          test: /\.tsx?$/,
           exclude: /node_modules/,
-          loader: 'babel-loader',
+          loader: 'ts-loader',
           options: {
-            cacheDirectory: isDev,
+            configFile: resolve(import.meta.dirname, './tsconfig.build.json'),
+            onlyCompileBundledFiles: true,
           },
         },
         {
@@ -74,7 +75,7 @@ export const createConfig = (mode: BuildMode): Configuration => {
       ],
     },
     resolve: {
-      extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
+      extensions: ['.ts', '.tsx', '.js', '.json'],
     },
   };
 };
