@@ -37,9 +37,9 @@ class Collection<T> {
 
   clear(matcher?: (item: T, key: Key) => boolean) {
     if (typeof matcher === 'function') {
-      this.forEach((item, key) => {
-        if (matcher(item, key)) this.delete(key);
-      });
+      this.keys
+        .filter(key => matcher(this.items[key], key))
+        .forEach(key => this.delete(key));
     } else {
       this.items = {};
       this.keys.splice(0);

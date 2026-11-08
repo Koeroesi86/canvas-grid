@@ -138,7 +138,8 @@ Requires Node.js 22.18+ (the Node-side scripts are TypeScript run through Node's
 npm ci
 npm run dev          # Vite dev server with a random-data websocket source, http://localhost:3000
 npm run build        # type-check, then bundle (UMD + ESM) and emit declarations into build/
-npm test             # type-check and unit tests
+npm test             # type-check, release-script tests and data store unit tests
+npm run bench        # data store benchmarks (BENCH_ROWS=1000,1000000 to change sizes)
 npm run serve-local  # run only the example data server
 ```
 

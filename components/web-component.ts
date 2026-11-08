@@ -1,12 +1,8 @@
 import throttle from 'lodash.throttle';
 import debounce from 'lodash.debounce';
 import Collection from './utils/collection';
-import {
-  getColumn,
-  getNow,
-  generateColumn,
-  getRowId,
-} from './utils/selectors';
+import DataStore from './utils/data-store';
+import { getRowId } from './utils/selectors';
 import styles from './component.css?inline';
 import Loading from './utils/loading';
 import { getContext2d } from './utils/canvas';
@@ -14,7 +10,8 @@ import DrawingLayer from './utils/drawing-layer';
 import CellBackground from './cell-background';
 import HeaderRenderer from './header';
 import CellValueRenderer from './cell-value';
-import type { ColumnData, Key, RowData, RowId, RowInput } from './types';
+import type { Key, RowId, RowInput } from './types';
+import type { RowIdGetter } from './utils/data-store';
 
 const classes = {
   drawingLayer: 'drawingLayer',
@@ -33,10 +30,6 @@ const injectStyles = () => {
   style.textContent = styles;
   document.head.appendChild(style);
 };
-
-type Row = RowData<Collection<ColumnData>>;
-
-type RowIdGetter = (row: RowInput, index?: number) => RowId;
 
 type CellRender = (
   value: string,
@@ -109,7 +102,12 @@ class CanvasGridComponent extends HTMLElement {
   _headerBackgroundColor = '#222';
   charactersToCache = `${Array(200).fill(1).map((_, index) => String.fromCharCode(index)).join('')} ${this.ellipsis}`;
   textColor = '#efefef';
-  _dataCollection = new Collection<Row>();
+  dataStore = new DataStore({
+    getRowId: (row, index) => this.getRowId(row, index),
+    formatValue: (key, value) => this.formatValue(key, value),
+    getCellHeight: () => this.cellHeight,
+  });
+  _dataCollection = this.dataStore.rows;
   prevValues = new Collection<Record<string, string | undefined>>();
   getRowId: RowIdGetter = getRowId;
   headers = new Collection<ColumnHeader>();
@@ -168,16 +166,9 @@ class CanvasGridComponent extends HTMLElement {
   });
 
   loadingIndicator = new Loading({ ctx: getContext2d(this.headerCanvas) });
-  pendingUpdates = new Collection<RowInput>();
-  pendingRemoves = new Collection<RowInput>();
   throttleTransation = throttle(() => {
     const prevSize = this.totalHeight;
-    if (this.pendingUpdates.length > 0) {
-      this.updateValues();
-    }
-    if (this.pendingRemoves.length > 0) {
-      this.removeValues();
-    }
+    this.dataStore.flush();
     if (prevSize !== this.totalHeight) {
       this.refreshScrollbar();
     }
@@ -537,12 +528,12 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   queueUpdate(row: RowInput) {
-    this.pendingUpdates.add(row);
+    this.dataStore.queueUpdate(row);
     this.throttleTransation();
   }
 
   queueRemove(row: RowInput) {
-    this.pendingRemoves.add(row);
+    this.dataStore.queueRemove(row);
     this.throttleTransation();
   }
 
@@ -561,7 +552,7 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   clearValues() {
-    this._dataCollection.clear();
+    this.dataStore.clear();
     this.prevValues.clear();
   }
 
@@ -571,63 +562,11 @@ class CanvasGridComponent extends HTMLElement {
 
   setValues(data: RowInput[]) {
     this.throttleTransation.cancel();
-    this.pendingUpdates.clear();
-    this.pendingRemoves.clear();
     this.clearValues();
-    if (Array.isArray(data)) {
-      data.forEach((row, index) => {
-        const rowId = this.getRowId(row, index);
-        const columns = new Collection<ColumnData>();
-        Object.keys(row).forEach(key => {
-          columns.set(key, generateColumn(row[key], key, undefined, this.formatValue(key, row[key])));
-        });
-        this._dataCollection.set(rowId, { index, height: this.cellHeight, columns });
-      });
-      this.refreshScrollbar();
-      this.forceDraw();
-    }
-  }
-
-  removeValues() {
-    this.pendingRemoves.forEach(row => {
-      this._dataCollection.delete(this.getRowId(row));
-    });
-    this.pendingRemoves.clear();
-  }
-
-  updateValues() {
-    const now = getNow();
-    this.pendingUpdates.forEach(row => {
-      const rowId = this.getRowId(row);
-      const currentIndex = this._dataCollection.keys.indexOf(rowId);
-      const rowData = this.getRowData(rowId);
-      if (rowData) {
-        Object.keys(row).forEach(columnKey => {
-          const columnValue = row[columnKey];
-          const columnData = getColumn(rowData, columnKey);
-          if (columnData) {
-            if (columnData.value !== columnValue) {
-              columnData.value = columnValue;
-              columnData.displayedValue = this.formatValue(columnKey, columnValue);
-              columnData.updatedAt = now;
-            }
-          } else {
-            rowData.columns.set(columnKey, generateColumn(columnValue, columnKey, undefined, this.formatValue(columnKey, columnValue)));
-          }
-        });
-      } else {
-        const columns = new Collection<ColumnData>();
-        Object.keys(row).forEach(key => {
-          columns.set(key, generateColumn(row[key], key, now, this.formatValue(key, row[key])));
-        });
-        this._dataCollection.set(rowId, {
-          index: currentIndex !== -1 ? currentIndex : this._dataCollection.keys.length,
-          height: this.cellHeight,
-          columns,
-        });
-      }
-    });
-    this.pendingUpdates.clear();
+    if (!Array.isArray(data)) return;
+    this.dataStore.setRows(data);
+    this.refreshScrollbar();
+    this.forceDraw();
   }
 
   renderCell(
