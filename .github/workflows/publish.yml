@@ -19,9 +19,6 @@ concurrency:
   group: publish
   cancel-in-progress: false
 
-env:
-  PACKAGE: '@koeroesi86/canvas-grid'
-
 jobs:
   prepare:
     if: github.repository == 'Koeroesi86/canvas-grid'
@@ -36,35 +33,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
       - name: Decide whether to release and compute the version
         id: version
-        run: |
-          set -euo pipefail
-          sha=$(git rev-parse HEAD)
-          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n1)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "last=$last" >> "$GITHUB_OUTPUT"
-
-          if [ -n "$last" ] && [ "$(git rev-list --count "$last..HEAD")" -eq 0 ]; then
-            echo "No commits since $last, nothing to release."
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          prefix=$(date -u +%y.%-m)
-          # highest N already used this month, from git tags and from npm
-          published=$(npm view "$PACKAGE" versions --json 2>/dev/null || echo '[]')
-          latest_n=$(
-            {
-              git tag --list "v$prefix.*" | sed 's/^v//'
-              echo "$published" | jq -r 'if type == "array" then .[] else . end'
-            } | grep -E "^${prefix//./\\.}\.[0-9]+$" | sed -E 's/.*\.//' | sort -n | tail -n1 || true
-          )
-          version="$prefix.$(( ${latest_n:-0} + 1 ))"
-
-          echo "release=true" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Releasing $version (previous: ${last:-none}) from $sha" | tee -a "$GITHUB_STEP_SUMMARY"
+        run: node scripts/prepare-release.mts
 
   build:
     needs: prepare
@@ -119,11 +93,14 @@ jobs:
     permissions:
       contents: write # create the tag and GitHub release
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
       - name: Tag and create the GitHub release
-        run: |
-          args=(--target "$SHA" --generate-notes --latest)
-          if [ -n "$LAST" ]; then args+=(--notes-start-tag "$LAST"); fi
-          gh release create "v$VERSION" "${args[@]}" --repo "$GITHUB_REPOSITORY"
+        run: node scripts/create-release.mts
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}

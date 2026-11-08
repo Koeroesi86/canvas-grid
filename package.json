@@ -23,7 +23,7 @@
     "build": "yarn typecheck && vite build && tsc -p tsconfig.build.json",
     "serve-local": "node server/example-serve.mts",
     "typecheck": "tsc --noEmit",
-    "test": "yarn typecheck"
+    "test": "yarn typecheck && node --test scripts/*.test.mts"
   },
   "keywords": [],
   "author": {
