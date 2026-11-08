@@ -90,7 +90,15 @@ describe('DataStore', () => {
       expect(store.hasPending).toBe(false);
     });
 
-    it('applies updates before removals', () => {
+    it('applies a removal followed by a re-add in queue order', () => {
+      store.setRows([{ id: 1, value: 'a' }]);
+      store.queueRemove({ id: 1 });
+      store.queueUpdate({ id: 1, value: 'b' });
+      store.flush();
+      expect(cellValue(store, 1, 'value')?.value).toBe('b');
+    });
+
+    it('removes a row updated earlier in the queue', () => {
       store.setRows([{ id: 1, value: 'a' }]);
       store.queueUpdate({ id: 1, value: 'b' });
       store.queueRemove({ id: 1 });
