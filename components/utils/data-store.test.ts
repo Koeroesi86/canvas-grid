@@ -98,6 +98,25 @@ describe('DataStore', () => {
       expect(cellValue(store, 1, 'value')?.value).toBe('b');
     });
 
+    it('reports whether rows were removed', () => {
+      store.setRows([{ id: 1 }, { id: 2 }]);
+      store.queueUpdate({ id: 1, value: 'x' });
+      expect(store.flush()).toBe(false);
+      store.queueRemove({ id: 99 });
+      expect(store.flush()).toBe(false);
+      store.queueRemove({ id: 2 });
+      expect(store.flush()).toBe(true);
+    });
+
+    it('renumbers the rows after a removal', () => {
+      store.setRows([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      store.queueRemove({ id: 1 });
+      store.flush();
+      expect(store.rows.get(2)?.index).toBe(0);
+      expect(store.rows.get(3)?.index).toBe(1);
+      expect(store.rows.totalHeight).toBe(40);
+    });
+
     it('removes a row updated earlier in the queue', () => {
       store.setRows([{ id: 1, value: 'a' }]);
       store.queueUpdate({ id: 1, value: 'b' });

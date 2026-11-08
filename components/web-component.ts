@@ -163,10 +163,12 @@ class CanvasGridComponent extends HTMLElement {
   private readonly placeholderState: CellState = {};
   throttleTransation = throttle(() => {
     const prevSize = this.totalHeight;
-    this.dataStore.flush();
+    const removed = this.dataStore.flush();
     if (prevSize !== this.totalHeight) {
       this.refreshScrollbar();
     }
+    // the rows below a removed one moved up, and a normal draw only repaints cells whose value changed
+    if (removed) this.forceDraw();
     this.requestRender();
   }, 50);
 
@@ -493,17 +495,23 @@ class CanvasGridComponent extends HTMLElement {
       }
     }
 
-    let currentY = Math.round((this.showHeaders ? this.headerHeight : 0) - this.scrollYOffset);
+    const originY = Math.round((this.showHeaders ? this.headerHeight : 0) - this.scrollYOffset);
     const xOffset = Math.round((this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset);
-    this._dataCollection.forEach((row, key) => {
-      const { columns } = row;
+    // only the rows overlapping the viewport: found by offset instead of walking from the first row
+    const firstRow = this._dataCollection.indexAt(-originY);
+    for (let rowIndex = firstRow; rowIndex < this._dataCollection.length; rowIndex++) {
+      const row = this._dataCollection.at(rowIndex);
+      const currentY = originY + this._dataCollection.topOf(rowIndex);
+      if (!row || currentY >= this.viewportHeight) break;
+
+      const { columns, id: key } = row;
       let currentX = xOffset;
 
       if ((forced || this.hasYScrolled()) && this.showRowNumbers) {
         this.renderRowNumber(row, currentY);
       }
 
-      if (row.height + currentY > 0 && currentY < this.viewportHeight) {
+      if (row.height + currentY > 0) {
         let entries = this.cellEntries.get(key);
         if (!entries) {
           entries = {};
@@ -544,8 +552,7 @@ class CanvasGridComponent extends HTMLElement {
           currentX += Math.round(header.width);
         });
       }
-      currentY += Math.round(row.height);
-    });
+    }
     if (this.scrollYOffset > 0 || this.scrollXOffset > 0) {
       this.renderBrick();
     }
@@ -646,11 +653,7 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   get totalHeight() {
-    let totalHeight = 0;
-    this._dataCollection.forEach(row => {
-      totalHeight += row.height;
-    });
-    return totalHeight;
+    return this._dataCollection.totalHeight;
   }
 
   refreshScrollbar() {

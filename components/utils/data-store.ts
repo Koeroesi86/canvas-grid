@@ -1,8 +1,7 @@
 import Collection from './collection';
+import RowStore, { type Row } from './row-store';
 import { generateColumn, getColumn, getNow } from './selectors';
-import type { ColumnData, Key, RowData, RowId, RowInput } from '../types';
-
-export type Row = RowData<Collection<ColumnData>>;
+import type { ColumnData, Key, RowId, RowInput } from '../types';
 
 export type RowIdGetter = (row: RowInput, index?: number) => RowId;
 
@@ -19,7 +18,7 @@ interface PendingChange {
 
 /** Row storage plus the queued add/update/remove handling, independent of the DOM. */
 class DataStore {
-  rows = new Collection<Row>();
+  rows = new RowStore();
   /** Queued changes, applied in the order they were made. */
   private pending: PendingChange[] = [];
 
@@ -58,27 +57,46 @@ class DataStore {
     this.pending = [];
     this.rows.clear();
     data.forEach((row, index) => {
-      this.rows.set(this.environment.getRowId(row, index), {
-        index,
+      this.rows.set({
+        id: this.environment.getRowId(row, index),
         height: this.environment.getCellHeight(),
         columns: this.createColumns(row, undefined),
       });
     });
   }
 
-  /** Applies the queued changes in the order they were queued. */
+  /**
+   * Applies the queued changes in the order they were queued; consecutive removals are applied together.
+   * Returns whether rows were removed, which moves the rows after them.
+   */
   flush(now = getNow()) {
     const changes = this.pending;
     this.pending = [];
-    changes.forEach(({ type, row }) => type === 'update' ? this.applyUpdate(row, now) : this.rows.delete(this.environment.getRowId(row)));
+    const removals: Key[] = [];
+    let removed = false;
+    const applyRemovals = () => {
+      removed = this.rows.removeMany(removals) || removed;
+      removals.length = 0;
+    };
+
+    changes.forEach(({ type, row }) => {
+      if (type === 'remove') {
+        removals.push(this.environment.getRowId(row));
+        return;
+      }
+      applyRemovals();
+      this.applyUpdate(row, now);
+    });
+    applyRemovals();
+    return removed;
   }
 
   private applyUpdate(row: RowInput, now: number) {
     const rowId = this.environment.getRowId(row);
     const rowData = this.rows.get(rowId);
     if (!rowData) {
-      this.rows.set(rowId, {
-        index: this.rows.length,
+      this.rows.set({
+        id: rowId,
         height: this.environment.getCellHeight(),
         columns: this.createColumns(row, now),
       });
