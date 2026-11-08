@@ -77,10 +77,11 @@ describe('CellBackground', () => {
       expect(opacityAt(400)).toBeCloseTo(0.5);
     });
 
-    it('does not flash while scrolling', () => {
-      const { cell, fillRect } = createCell({ age: 100, isScrolling: true });
+    it('keeps flashing while scrolling', () => {
+      const { cell, fillRect, alphas } = createCell({ age: 100, isScrolling: true });
       renderer.draw(cell);
-      expect(fillRect).toHaveBeenCalledTimes(1);
+      expect(fillRect).toHaveBeenCalledTimes(2);
+      expect(alphas[1]).toBeCloseTo(0.5);
     });
 
     it('draws the configured borders inside the cell', () => {

@@ -54,9 +54,9 @@ class CellBackground extends Renderer<CellBackgroundOptions> implements CellRend
     return Math.max(0, Math.round(alpha * 1000) / 1000);
   }
 
-  draw({ ctx, x, y, width, height, age, isScrolling }: Readonly<CellContext>) {
+  draw({ ctx, x, y, width, height, age }: Readonly<CellContext>) {
     const { background, flashRGB, borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
-    const flash = isScrolling ? 0 : this.getFlashAlpha(age);
+    const flash = this.getFlashAlpha(age);
 
     (
       <Group>
