@@ -10,6 +10,14 @@ const filled = () => {
 };
 
 describe('Collection', () => {
+  it('treats numeric and string keys as the same entry', () => {
+    const collection = new Collection<string>();
+    collection.set(1, 'a');
+    expect(collection.get('1')).toBe('a');
+    collection.set('1', 'b');
+    expect(collection.length).toBe(1);
+  });
+
   it('keeps insertion order and does not duplicate keys on overwrite', () => {
     const collection = filled();
     collection.set('a', 'A2');
