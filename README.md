@@ -135,11 +135,11 @@ Modern evergreen browsers with Custom Elements v1 and Canvas 2D.
 Requires Node.js 22.18+ (the Node-side scripts are TypeScript run through Node's native type stripping).
 
 ```sh
-yarn install
-yarn dev          # Vite dev server with a random-data websocket source, http://localhost:3000
-yarn build        # type-check, then bundle (UMD + ESM) and emit declarations into build/
-yarn test         # type-check
-yarn serve-local  # run only the example data server
+npm ci
+npm run dev          # Vite dev server with a random-data websocket source, http://localhost:3000
+npm run build        # type-check, then bundle (UMD + ESM) and emit declarations into build/
+npm test             # type-check and unit tests
+npm run serve-local  # run only the example data server
 ```
 
 `DEV_PORT` (env or `.env`) changes the dev port.
