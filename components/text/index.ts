@@ -62,6 +62,14 @@ class TextRenderer extends Renderer<TextOptions> {
     return this.options.color;
   }
 
+  set pixelRatio(pixelRatio: number) {
+    this.characterRenderer.pixelRatio = pixelRatio;
+  }
+
+  get pixelRatio() {
+    return this.characterRenderer.pixelRatio;
+  }
+
   clearCache() {
     this.characterRenderer.clearCache();
   }

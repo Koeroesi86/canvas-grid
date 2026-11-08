@@ -48,7 +48,7 @@ export default class CharacterRenderer extends CanvasRenderer<CharacterOptions> 
   }
 
   protected cacheKey({ value = '', height = 0 }: RenderProps) {
-    return `${this.options.font}|${this.options.color}|${height}|${value}`;
+    return `${this.options.font}|${this.options.color}|${this.pixelRatio}|${height}|${value}`;
   }
 
   getCharacterWidth(character = '') {
@@ -67,16 +67,15 @@ export default class CharacterRenderer extends CanvasRenderer<CharacterOptions> 
   }
 
   render({ value = '', height = 0 }: RenderProps) {
-    this.canvas.width = this.getCharacterWidth(value);
-    this.canvas.height = height;
+    const { pixelRatio } = this;
+    this.canvas.width = Math.round(this.getCharacterWidth(value) * pixelRatio);
+    this.canvas.height = Math.round(height * pixelRatio);
+    // sizing the canvas reset the context, so the state is set up again below
+    this.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
 
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-
-    if (this.ctx.font !== this.options.font) {
-      this.ctx.font = this.options.font;
-      this.ctx.textAlign = 'left';
-      this.ctx.textBaseline = 'top';
-    }
+    this.ctx.font = this.options.font;
+    this.ctx.textAlign = 'left';
+    this.ctx.textBaseline = 'top';
     if (this.ctx.fillStyle !== this.options.color) {
       this.ctx.fillStyle = this.options.color;
     }

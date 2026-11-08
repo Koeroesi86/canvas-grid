@@ -35,6 +35,9 @@ export abstract class CanvasRenderer<Options extends object> extends Renderer<Op
     return undefined;
   }
 
+  /** Device pixels per CSS pixel of the layer being drawn to; bitmaps are rendered at this scale to stay sharp. */
+  pixelRatio = 1;
+
   clearCache() {
     this.bitmaps.clear();
   }
@@ -43,7 +46,7 @@ export abstract class CanvasRenderer<Options extends object> extends Renderer<Op
     const key = this.cacheKey(props);
     const bitmap = (key === undefined ? undefined : this.bitmaps.get(key)) ?? this.renderBitmap(props, key);
     if (bitmap.width <= 0 || bitmap.height <= 0) return;
-    ctx.drawImage(bitmap, x + (props.x ?? 0), y + (props.y ?? 0));
+    ctx.drawImage(bitmap, x + (props.x ?? 0), y + (props.y ?? 0), bitmap.width / this.pixelRatio, bitmap.height / this.pixelRatio);
   }
 
   readonly element = primitive<RenderProps>((ctx, props, x, y) => this.paint(ctx, props, x, y));

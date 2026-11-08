@@ -265,7 +265,7 @@ class CanvasGridComponent extends HTMLElement {
     // the constructor already runs on elements that are in the document, before connectedCallback mounted anything
     if (this.scrollArea.parentElement === this) {
       this.insertBefore(layer.canvas, next?.canvas ?? this.scrollArea);
-      layer.resize(this.clientWidth, this.clientHeight);
+      layer.resize(this.clientWidth, this.clientHeight, this.pixelRatio);
       this.forceDraw();
     }
     return layer;
@@ -325,6 +325,9 @@ class CanvasGridComponent extends HTMLElement {
     if (this.headers.length === 0) this.setColumns(Array(50).fill(1).map((_, index) => index));
 
     document.addEventListener('visibilitychange', this.onVisibilityChange);
+    this.observeSize();
+    this.pixelRatioQuery = window.matchMedia(`(resolution: ${this.pixelRatio}dppx)`);
+    this.pixelRatioQuery.addEventListener('change', this.watchPixelRatio, { once: true });
 
     if (document.fonts) {
       document.fonts.addEventListener('loadingdone', this.onFontsLoaded);
@@ -373,10 +376,6 @@ class CanvasGridComponent extends HTMLElement {
   render() {
     const delta = new Date().valueOf() - this.lastRender;
     if (delta >= (1000 / this.fps)) {
-      if (this.canvas.width !== this.clientWidth || this.canvas.height !== this.clientHeight) {
-        this.resize();
-      }
-
       this.draw();
       this.updateLastRender();
     }
@@ -396,8 +395,8 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   isInViewport(x = 0, y = 0, width = 0, height = 0)  {
-    if (x > this.canvas.width) return false;
-    if (y > this.canvas.height) return false;
+    if (x > this.viewportWidth) return false;
+    if (y > this.viewportHeight) return false;
     if (x + width < 0) return false;
     if (y + height < 0) return false;
 
@@ -489,7 +488,7 @@ class CanvasGridComponent extends HTMLElement {
         this.renderRowNumber(row, currentY);
       }
 
-      if (row.height + currentY > 0 && currentY < this.canvas.height) {
+      if (row.height + currentY > 0 && currentY < this.viewportHeight) {
         let entries = this.cellEntries.get(key);
         if (!entries) {
           entries = {};
@@ -552,12 +551,49 @@ class CanvasGridComponent extends HTMLElement {
     this.draw(true);
   }
 
+  /** Viewport size in CSS pixels as of the last resize; cached because reading `clientWidth` per cell is slow. */
+  viewportWidth = 0;
+
+  viewportHeight = 0;
+
+  /** Device pixels per CSS pixel; canvases are scaled by it to stay sharp on HiDPI screens. */
+  get pixelRatio() {
+    return window.devicePixelRatio || 1;
+  }
+
+  /** Resizes the layers when the size or pixel ratio changed, then redraws everything. */
   resize() {
     this.cancelRender();
-    this.layers.forEach(layer => layer.resize(this.clientWidth, this.clientHeight));
+    const { pixelRatio } = this;
+    this.viewportWidth = this.clientWidth;
+    this.viewportHeight = this.clientHeight;
+    this.layers.forEach(layer => layer.resize(this.clientWidth, this.clientHeight, pixelRatio));
+    if (this.cellValueRenderer.pixelRatio !== pixelRatio) {
+      this.renderers.clearCaches();
+    }
+    this.cellValueRenderer.pixelRatio = pixelRatio;
+    this.headerCellRenderer.pixelRatio = pixelRatio;
     this.forceDraw();
     this.render();
   }
+
+  /** Redraws when the element changes size, instead of checking on every frame. */
+  private observeSize() {
+    this.resizeObserver ??= new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(this);
+  }
+
+  /** The pixel ratio changes with browser zoom or when the window moves to another screen. */
+  private watchPixelRatio = () => {
+    this.pixelRatioQuery?.removeEventListener('change', this.watchPixelRatio);
+    this.pixelRatioQuery = window.matchMedia(`(resolution: ${this.pixelRatio}dppx)`);
+    this.pixelRatioQuery.addEventListener('change', this.watchPixelRatio, { once: true });
+    this.resize();
+  };
+
+  private resizeObserver: ResizeObserver | undefined = undefined;
+
+  private pixelRatioQuery: MediaQueryList | undefined = undefined;
 
   getRowData(rowId: RowId) {
     return this._dataCollection.get(rowId);
@@ -687,6 +723,8 @@ class CanvasGridComponent extends HTMLElement {
   disconnectedCallback() {
     this.cancelRender();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    this.resizeObserver?.disconnect();
+    this.pixelRatioQuery?.removeEventListener('change', this.watchPixelRatio);
     document.fonts?.removeEventListener('loadingdone', this.onFontsLoaded);
     clearTimeout(this.fontsTimeout);
   }

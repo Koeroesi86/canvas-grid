@@ -49,6 +49,14 @@ export default class CellValueRenderer extends Renderer<CellValueOptions> implem
     return this.options.color;
   }
 
+  set pixelRatio(pixelRatio: number) {
+    this.renderer.pixelRatio = pixelRatio;
+  }
+
+  get pixelRatio() {
+    return this.renderer.pixelRatio;
+  }
+
   clearCache() {
     this.renderer.clearCache();
   }
