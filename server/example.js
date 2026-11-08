@@ -1,6 +1,6 @@
 const WebSocket = require('ws');
 
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const rowCount = 500;
 const columnCount = 30;

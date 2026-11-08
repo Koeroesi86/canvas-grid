@@ -24,41 +24,38 @@ process.on('unhandledRejection', err => {
 
 const port = process.env.DEV_PORT;
 const compiler = webpack(config);
-const devServerOptions = Object.assign({}, config.devServer, {
+// HMR/live-reload sockets are disabled: the example data server shares this http server's websocket upgrades.
+const devServer = new WebpackDevServer({
+  ...config.devServer,
+  host: '0.0.0.0',
+  port,
   open: false,
-  inline: false,
-  hot: true,
+  hot: false,
+  liveReload: false,
+  client: false,
+  webSocketServer: false,
   compress: true,
   historyApiFallback: true,
-  // noInfo: true,
-  overlay: {
-    warnings: false,
-    errors: true
+  devMiddleware: {
+    stats: {
+      builtAt: true,
+      hash: false,
+      version: false,
+      chunks: false,
+      colors: true,
+      assets: false,
+      children: false,
+      entrypoints: false,
+      modules: false,
+      errors: true,
+      errorDetails: true,
+      performance: true,
+      warnings: true,
+    },
   },
-  watchOptions: {
-    aggregateTimeout: 300,
-    poll: 1000
-  },
-  stats: {
-    builtAt: true,
-    hash: false,
-    version: false,
-    chunks: false,
-    colors: true,
-    assets: false,
-    children: false,
-    entrypoints: false,
-    modules: false,
-    errors: true,
-    errorDetails: true,
-    performance: true,
-    warnings: true,
-  },
-  // before: app => {
-  // }
-});
-const devServer = new WebpackDevServer(compiler, devServerOptions);
-const httpServer = devServer.listen(port, '0.0.0.0', () => {
+}, compiler);
+
+devServer.start().then(() => {
   console.log(`Starting server on http://localhost:${port}`);
+  exampleServer(devServer.server);
 });
-exampleServer(httpServer);
