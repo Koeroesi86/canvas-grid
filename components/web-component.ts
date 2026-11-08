@@ -1,7 +1,9 @@
 import throttle from 'lodash.throttle';
 import debounce from 'lodash.debounce';
 import Collection from './utils/collection';
+import ColumnStore from './utils/column-store';
 import DataStore from './utils/data-store';
+import LruCache from './utils/lru-cache';
 import { getRowId } from './utils/selectors';
 import styles from './component.css?inline';
 import Loading from './utils/loading';
@@ -11,7 +13,7 @@ import CellBackground from './cell-background';
 import HeaderRenderer from './header';
 import CellValueRenderer from './cell-value';
 import type { LayerOptions } from './utils/layer';
-import type { CellContext, CellRenderer, CellState, Key, RendererRef, RowId, RowInput } from './types';
+import type { CellContext, CellRenderer, CellState, Key, RendererRef, RowId, RowInput, SortDirection, SortKey } from './types';
 import type { RowIdGetter } from './utils/data-store';
 
 const classes = {
@@ -30,7 +32,9 @@ const builtIn = {
 
 /** What the grid remembers about a cell between frames. */
 interface CellEntry {
-  value: string | undefined;
+  /** The raw value last drawn, and its formatted text; formatting only runs when the value differs. */
+  value: unknown;
+  formatted: string | undefined;
   animating: boolean;
   state: CellState;
 }
@@ -72,7 +76,7 @@ interface AgApi {
   getRowNodeId: RowIdGetter;
 }
 
-export type { CellContext, CellRenderer, CellState, LayerOptions, RendererRef };
+export type { CellContext, CellRenderer, CellState, LayerOptions, RendererRef, SortDirection, SortKey };
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -101,11 +105,11 @@ class CanvasGridComponent extends HTMLElement {
   textColor = '#efefef';
   dataStore = new DataStore({
     getRowId: (row, index) => this.getRowId(row, index),
-    formatValue: (key, value) => this.formatValue(key, value),
     getCellHeight: () => this.cellHeight,
   });
   _dataCollection = this.dataStore.rows;
-  cellEntries = new Collection<Record<string, CellEntry>>();
+  /** Per-cell memory of the rows drawn recently; bounded, since only the rows in view need it. */
+  cellEntries = new LruCache<Record<string, CellEntry>>(2048);
   getRowId: RowIdGetter = getRowId;
   headers = new Collection<ColumnHeader>();
   animationFrame: number | undefined = undefined;
@@ -163,12 +167,12 @@ class CanvasGridComponent extends HTMLElement {
   private readonly placeholderState: CellState = {};
   throttleTransation = throttle(() => {
     const prevSize = this.totalHeight;
-    const removed = this.dataStore.flush();
+    const moved = this.dataStore.flush();
     if (prevSize !== this.totalHeight) {
       this.refreshScrollbar();
     }
-    // the rows below a removed one moved up, and a normal draw only repaints cells whose value changed
-    if (removed) this.forceDraw();
+    // rows that were removed or re-sorted changed position, and a normal draw only repaints cells whose value changed
+    if (moved) this.forceDraw();
     this.requestRender();
   }, 50);
 
@@ -499,58 +503,59 @@ class CanvasGridComponent extends HTMLElement {
     const xOffset = Math.round((this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset);
     // only the rows overlapping the viewport: found by offset instead of walking from the first row
     const firstRow = this._dataCollection.indexAt(-originY);
+    const visibleColumns = this.getVisibleColumns(xOffset);
     for (let rowIndex = firstRow; rowIndex < this._dataCollection.length; rowIndex++) {
       const row = this._dataCollection.at(rowIndex);
       const currentY = originY + this._dataCollection.topOf(rowIndex);
       if (!row || currentY >= this.viewportHeight) break;
 
-      const { columns, id: key } = row;
-      let currentX = xOffset;
+      const { id: key, slot } = row;
 
       if ((forced || this.hasYScrolled()) && this.showRowNumbers) {
         this.renderRowNumber(row, currentY);
       }
 
       if (row.height + currentY > 0) {
-        let entries = this.cellEntries.get(key);
+        let entries = this.cellEntries.get(String(key));
         if (!entries) {
           entries = {};
-          this.cellEntries.set(key, entries);
+          this.cellEntries.set(String(key), entries);
         }
         const cellRow = { id: key, index: row.index };
 
-        columns.forEach((column, columnKey) => {
-          const { value, displayedValue, updatedAt } = column;
-          const header = this.getColumnHeader(columnKey);
-          if (!header) return;
+        for (const { header, id: columnKey, x, store } of visibleColumns) {
+          const value = store?.get(slot);
+          if (value === undefined) continue;
 
-          const entry = entries[columnKey] ??= { value: undefined, animating: false, state: {} };
-          const valueChanged = entry.value !== displayedValue;
-          if (this.isInViewport(currentX, currentY, header.width, row.height)) {
-            const { cell } = this;
-            cell.x = currentX;
-            cell.y = currentY;
-            cell.width = header.width;
-            cell.height = row.height;
-            cell.row = cellRow;
-            cell.column = header;
-            cell.value = value;
-            cell.formatted = displayedValue;
-            cell.updatedAt = updatedAt;
-            cell.age = updatedAt === undefined ? Infinity : now - updatedAt;
-            cell.valueChanged = valueChanged;
-            cell.forced = redrawAll;
-            cell.state = entry.state;
-            const refs = header.renderers ?? this.cellRenderers;
-            const animating = this.isAnimating(refs);
-            // an animation gets one last frame after it stops, so its final state is what stays on screen
-            if (redrawAll || valueChanged || animating || entry.animating) this.paintAll(refs);
-            entry.animating = animating;
-            keepDrawing ||= animating;
-          }
-          entry.value = displayedValue;
-          currentX += Math.round(header.width);
-        });
+          const entry = entries[columnKey] ??= { value: undefined, formatted: undefined, animating: false, state: {} };
+          // values are only formatted for the cells being drawn, and again only once they change
+          const formatted = entry.formatted !== undefined && entry.value === value ? entry.formatted : header.valueFormatter(value);
+          const valueChanged = entry.formatted !== formatted;
+          const updatedAt = store?.getUpdatedAt(slot);
+
+          const { cell } = this;
+          cell.x = x;
+          cell.y = currentY;
+          cell.width = header.width;
+          cell.height = row.height;
+          cell.row = cellRow;
+          cell.column = header;
+          cell.value = value;
+          cell.formatted = formatted;
+          cell.updatedAt = updatedAt;
+          cell.age = updatedAt === undefined ? Infinity : now - updatedAt;
+          cell.valueChanged = valueChanged;
+          cell.forced = redrawAll;
+          cell.state = entry.state;
+          const refs = header.renderers ?? this.cellRenderers;
+          const animating = this.isAnimating(refs);
+          // an animation gets one last frame after it stops, so its final state is what stays on screen
+          if (redrawAll || valueChanged || animating || entry.animating) this.paintAll(refs);
+          entry.animating = animating;
+          entry.value = value;
+          entry.formatted = formatted;
+          keepDrawing ||= animating;
+        }
       }
     }
     if (this.scrollYOffset > 0 || this.scrollXOffset > 0) {
@@ -559,6 +564,19 @@ class CanvasGridComponent extends HTMLElement {
     this.prevScrollYOffset = this.scrollYOffset;
     this.prevScrollXOffset = this.scrollXOffset;
     if (keepDrawing) this.requestRender();
+  }
+
+  /** The columns overlapping the viewport horizontally, with their x position and values; found once per draw, not per row. */
+  private getVisibleColumns(xOffset: number) {
+    const visible: { header: ColumnHeader; id: string; x: number; store: ColumnStore | undefined }[] = [];
+    let x = xOffset;
+    this.headers.forEach((header, key) => {
+      if (this.isInViewport(x, 0, header.width, 0)) {
+        visible.push({ header, id: String(key), x, store: this.dataStore.columns.get(String(key)) });
+      }
+      x += Math.round(header.width);
+    });
+    return visible;
   }
 
   renderRowNumber(row: { index: number; height?: number }, y: number) {
@@ -618,8 +636,27 @@ class CanvasGridComponent extends HTMLElement {
 
   private pixelRatioQuery: MediaQueryList | undefined = undefined;
 
+  /** A row's position and height along with its values by column id, or undefined for an unknown row. */
   getRowData(rowId: RowId) {
-    return this._dataCollection.get(rowId);
+    const row = this._dataCollection.get(rowId);
+    if (!row) return undefined;
+
+    const values: Record<string, unknown> = {};
+    this.dataStore.columns.forEach((column, key) => {
+      const value = column.get(row.slot);
+      if (value !== undefined) values[key] = value;
+    });
+    return { id: row.id, index: row.index, height: row.height, values };
+  }
+
+  /** Orders the rows by the given columns, in priority order; an empty list restores the original order. */
+  setSortModel(model: readonly SortKey[]) {
+    this.dataStore.setSortModel(model);
+    this.forceDraw();
+  }
+
+  getSortModel() {
+    return this.dataStore.getSortModel();
   }
 
   renderBrick() {
@@ -711,6 +748,8 @@ class CanvasGridComponent extends HTMLElement {
   setColumns(columns: ColumnDefinition[]) {
     if (Array.isArray(columns)) {
       this.headers.clear();
+      // cached formatted values belong to the previous formatters
+      this.cellEntries.clear();
       const defaults = {
         width: 100,
         valueFormatter: (v: unknown) => String(v),

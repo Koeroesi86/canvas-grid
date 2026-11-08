@@ -10,7 +10,6 @@ const BATCH = 1000;
 
 const createStore = () => new DataStore({
   getRowId: row => row.id,
-  formatValue: (_key, value) => String(value),
   getCellHeight: () => 20,
 });
 

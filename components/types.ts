@@ -7,17 +7,23 @@ export interface RowInput {
   [column: string]: unknown;
 }
 
-export interface ColumnData {
-  column: string;
-  value: unknown;
-  displayedValue: string;
-  updatedAt: number | undefined;
+/** A row's position and size; its values live in the column stores, addressed by `slot`. */
+export interface RowData {
+  id: RowId;
+  /** Position in the displayed (sorted) order. */
+  index: number;
+  /** Position in the column stores; stable until rows are removed. */
+  slot: number;
+  height: number;
 }
 
-export interface RowData<Columns> {
-  index: number;
-  height: number;
-  columns: Columns;
+export type SortDirection = 'asc' | 'desc';
+
+export interface SortKey {
+  columnId: Key;
+  direction?: SortDirection;
+  /** Orders two values of the column; defaults to numbers numerically, then text, with empty values last. */
+  compare?: (a: unknown, b: unknown) => number;
 }
 
 /** Props of a drawable element (see utils/jsx); positions are relative to the draw origin. */
