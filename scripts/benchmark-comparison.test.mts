@@ -9,6 +9,7 @@ const result = (overrides: Partial<ScrollResult> = {}): ScrollResult => ({
   frameMaxMs: 30,
   drawMeanMs: 5,
   drawP95Ms: 8,
+  stalledFrames: 0,
   ...overrides,
 });
 
@@ -54,6 +55,31 @@ describe('compareResults', () => {
   it('uses the median across runs so one outlier does not decide', () => {
     const head = [result({ drawMeanMs: 5 }), result({ drawMeanMs: 50 }), result({ drawMeanMs: 5.2 })];
     assert.equal(find('Draw time mean (ms)', compareResults([result()], head, 0.3)).failed, false);
+  });
+});
+
+describe('stalled frames', () => {
+  const stalled = (count: number) => [result({ stalledFrames: count })];
+  const label = 'Stalled frames (>50 ms)';
+
+  it('tolerates an isolated spike but fails past the allowance, even from a base of zero', () => {
+    assert.equal(find(label, compareResults(stalled(0), stalled(2), 0.3, 2)).failed, false);
+    assert.equal(find(label, compareResults(stalled(0), stalled(3), 0.3, 2)).failed, true);
+  });
+
+  it('compares by difference, so a noisy base does not hide a regression', () => {
+    assert.equal(find(label, compareResults(stalled(10), stalled(14), 0.3, 2)).failed, true);
+    assert.equal(find(label, compareResults(stalled(10), stalled(6), 0.3, 2)).failed, false);
+  });
+
+  it('uses the median across runs', () => {
+    const head = [result({ stalledFrames: 0 }), result({ stalledFrames: 40 }), result({ stalledFrames: 1 })];
+    assert.equal(find(label, compareResults([result()], head, 0.3, 2)).failed, false);
+  });
+
+  it('reports the difference rather than a percentage', () => {
+    const markdown = formatMarkdown(compareResults(stalled(0), stalled(5), 0.3, 2), 0.3, 1, 2);
+    assert.match(markdown, /\| Stalled frames \(>50 ms\) \| 0\.00 \| 5\.00 \| \+5 \| regression \|/);
   });
 });
 
