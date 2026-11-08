@@ -42,6 +42,22 @@ try {
   await page.goto(`http://127.0.0.1:${port}/benchmarks/scroll/index.html?rows=${rows}&columns=${columns}`);
   await page.waitForFunction(() => window.benchmarkReady === true, undefined, { timeout: 120_000 });
   await page.waitForTimeout(1000);
+  // Scroll for a moment first so the measurement sees steady state, not the cold first frames after idle.
+  await page.evaluate(({ step }) => new Promise<void>(resolveWarmUp => {
+    const scrollArea = document.querySelector('canvas-grid .scrollArea');
+    if (!scrollArea) throw new Error('scroll area not found');
+    let frames = 0;
+    const tick = () => {
+      scrollArea.scrollTop += step;
+      if (++frames < 60) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      scrollArea.scrollTop = 0;
+      requestAnimationFrame(() => requestAnimationFrame(() => resolveWarmUp()));
+    };
+    requestAnimationFrame(tick);
+  }), { step });
   await page.evaluate(() => { window.drawTimes = []; });
 
   const result: ScrollResult = await page.evaluate(({ durationMs, step }) => new Promise<ScrollResult>(resolveResult => {
