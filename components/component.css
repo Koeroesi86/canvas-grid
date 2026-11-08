@@ -1,6 +1,8 @@
 canvas-grid {
   position: relative;
   display: block;
+  /* keeps the layers' z-indexes inside the grid, so it cannot paint over page content such as sticky headers */
+  isolation: isolate;
 
   &, & * {
     box-sizing: border-box;
