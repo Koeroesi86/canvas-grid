@@ -140,6 +140,7 @@ npm run dev          # Vite dev server with a random-data websocket source, http
 npm run build        # type-check, then bundle (UMD + ESM) and emit declarations into build/
 npm test             # type-check, release-script tests and data store unit tests
 npm run bench        # data store benchmarks (BENCH_ROWS=1000,1000000 to change sizes)
+npm run bench:scroll # scroll FPS and frame-time p95 in headless Chromium (needs `npx playwright install chromium`)
 npm run serve-local  # run only the example data server
 ```
 

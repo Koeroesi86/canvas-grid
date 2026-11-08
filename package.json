@@ -24,7 +24,8 @@
     "serve-local": "node server/example-serve.mts",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && node --test scripts/*.test.mts && vitest run",
-    "bench": "vitest run --config vitest.bench.config.mts"
+    "bench": "vitest run --config vitest.bench.config.mts",
+    "bench:scroll": "node benchmarks/scroll.bench.mts"
   },
   "keywords": [],
   "author": {
@@ -41,6 +42,7 @@
     "@types/ws": "^8.18.2",
     "lodash.debounce": "^4.0.8",
     "lodash.throttle": "^4.1.1",
+    "playwright": "^1.65.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0",
