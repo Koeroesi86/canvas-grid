@@ -9,6 +9,8 @@ A fast data grid rendered on `<canvas>`, shipped as a framework-agnostic custom 
 - Written in TypeScript, types included
 - Optional AG Grid-style adapter (`agApi`) for `setRowData` / `updateRowData` / `setColumnDefs`
 
+Live demo and feature overview: https://koeroesi86.github.io/canvas-grid/
+
 ## Install
 
 ```sh
@@ -224,9 +226,12 @@ npm test             # type-check, release-script tests and data store unit test
 npm run bench        # data store benchmarks (BENCH_ROWS=1000,1000000 to change sizes)
 npm run bench:scroll # scroll FPS and frame-time p95 in headless Chromium (needs `npx playwright install chromium`)
 npm run serve-local  # run only the example data server
+npm run site         # preview the demo site (site/) on http://localhost:4000
 ```
 
 `DEV_PORT` (env or `.env`) changes the dev port.
+
+The demo site in `site/` is plain static files, with no build step. It loads the grid from unpkg and is fed by a web worker (`site/data-worker.js`). `npm run site` serves it locally; open `http://localhost:4000/?local` to run it against your own `npm run build` output instead of the published package. `SITE_PORT` changes the port. The site is deployed to GitHub Pages by `.github/workflows/pages.yml` whenever `site/` changes on `master`.
 
 Releases are published to npm from CI when a `vX.Y.Z` tag is pushed (see `.github/workflows/publish.yml`).
 

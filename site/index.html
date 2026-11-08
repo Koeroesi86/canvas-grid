@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canvas Grid</title>
+  <meta name="description" content="A fast data grid rendered on canvas, shipped as a framework-agnostic web component and built for streams of frequent updates.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23161b22'/%3E%3Cpath d='M6 11h20M6 17h20M6 23h20M13 6v20M20 6v20' stroke='%23d6900d' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="demo.js"></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#">Canvas Grid</a>
+  <nav>
+    <a href="#demo">Demo</a>
+    <a href="#features">Features</a>
+    <a href="#start">Get started</a>
+    <a href="https://github.com/Koeroesi086/canvas-grid">GitHub</a>
+    <a href="https://www.npmjs.com/package/@koeroesi86/canvas-grid">npm</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>A data grid that keeps up with your data</h1>
+    <p>
+      <code>&lt;canvas-grid&gt;</code> draws on a canvas, virtualises rows and columns and flashes cells as their values change.
+      It is a plain web component, so it works with any framework, or none.
+    </p>
+    <pre class="install"><code>npm install @koeroesi86/canvas-grid</code></pre>
+  </section>
+
+  <section id="demo" class="demo">
+    <h2>Live demo</h2>
+    <p class="lead">
+      A web worker simulates a market feed and posts the initial rows and then batches of ticks.
+      The page hands them straight to the grid, which is loaded from <a href="https://unpkg.com/@koeroesi86/canvas-grid/">unpkg</a>.
+    </p>
+
+    <div class="controls">
+      <label>Rows
+        <select id="rows">
+          <option value="1000">1,000</option>
+          <option value="10000" selected>10,000</option>
+          <option value="100000">100,000</option>
+        </select>
+      </label>
+      <label>Updates per second
+        <select id="rate">
+          <option value="50">50</option>
+          <option value="500" selected>500</option>
+          <option value="2000">2,000</option>
+          <option value="5000">5,000</option>
+        </select>
+      </label>
+      <label>Sort
+        <select id="sort">
+          <option value="">None</option>
+          <option value="price:desc">Price, high to low</option>
+          <option value="change:desc">Change, high to low</option>
+          <option value="change:asc">Change, low to high</option>
+          <option value="volume:desc">Volume, high to low</option>
+          <option value="symbol:asc">Symbol, A to Z</option>
+          <option value="sector:asc,price:desc">Sector, then price</option>
+        </select>
+      </label>
+      <button id="pause" type="button">Pause feed</button>
+    </div>
+
+    <div class="grid-frame">
+      <canvas-grid></canvas-grid>
+      <p id="status" class="status" role="status">Loading the grid…</p>
+    </div>
+    <dl class="stats">
+      <div><dt>Rows</dt><dd id="stat-rows">–</dd></div>
+      <div><dt>Updates received</dt><dd id="stat-rate">–</dd></div>
+      <div><dt>Grid version</dt><dd id="stat-version">–</dd></div>
+    </dl>
+  </section>
+
+  <section id="features">
+    <h2>Features</h2>
+    <ul class="cards">
+      <li>
+        <h3>Built for update streams</h3>
+        <p>Row updates are merged by id, batched and throttled. Changed cells flash, with the timing and colour configurable.</p>
+      </li>
+      <li>
+        <h3>Draws only what you see</h3>
+        <p>Rows live in a dense array with a binary search for the first visible row, so a frame costs the same with 1,000 rows or a million.</p>
+      </li>
+      <li>
+        <h3>Idle means idle</h3>
+        <p>The render loop is driven by requests. With nothing changing, scrolling or animating, the grid does no drawing at all.</p>
+      </li>
+      <li>
+        <h3>Columnar store, lazy formatting</h3>
+        <p>Values are stored per column and formatted only for cells being drawn, and again only when their value changes.</p>
+      </li>
+      <li>
+        <h3>Multi-key sorting</h3>
+        <p><code>setSortModel</code> sorts numbers numerically and text with <code>Intl.Collator</code>, keeps ties stable and keeps the order as rows update.</p>
+      </li>
+      <li>
+        <h3>Sharp on HiDPI</h3>
+        <p>Layers and glyphs are rendered at the device pixel ratio, and follow when you zoom or move the window to another screen.</p>
+      </li>
+      <li>
+        <h3>Layers and custom renderers</h3>
+        <p>Stack canvases and register renderers by name. The demo's change column adds a small bar on its own layer.</p>
+      </li>
+      <li>
+        <h3>Just a web component</h3>
+        <p>No framework required, types included, plus an AG Grid-style adapter to ease a migration.</p>
+      </li>
+      <li>
+        <h3>Performance is checked in CI</h3>
+        <p>Every pull request runs a scroll benchmark against its base commit and fails on a draw-time regression or repeated frame stalls.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section id="start">
+    <h2>Get started</h2>
+    <div class="columns">
+      <div>
+        <h3>From npm</h3>
+        <pre><code>npm install @koeroesi86/canvas-grid</code></pre>
+        <pre><code>import '@koeroesi86/canvas-grid';
+
+const grid = document.querySelector('canvas-grid');
+
+grid.setColumns([
+  'name',
+  { id: 'price', displayName: 'Price', width: 80,
+    valueFormatter: value =&gt; Number(value).toFixed(2) },
+]);
+grid.setValues([
+  { id: 1, name: 'Apple', price: 1.2 },
+  { id: 2, name: 'Pear', price: 0.9 },
+]);
+
+// later: only the given columns change
+grid.queueUpdate({ id: 2, price: 1.0 });</code></pre>
+      </div>
+      <div>
+        <h3>From a script tag</h3>
+        <pre><code>&lt;canvas-grid style="display:block;height:400px"&gt;&lt;/canvas-grid&gt;
+&lt;script src="https://unpkg.com/@koeroesi086/canvas-grid/build/web-component.js"&gt;&lt;/script&gt;</code></pre>
+        <h3>Feeding it from a worker</h3>
+        <pre><code>const worker = new Worker('data-worker.js');
+worker.onmessage = ({ data }) =&gt; {
+  if (data.type === 'init') {
+    grid.setColumns(data.columns);
+    grid.setValues(data.rows);
+  }
+  if (data.type === 'ticks') {
+    grid.transaction({ update: data.rows });
+  }
+};</code></pre>
+        <p>The full reference is in the <a href="https://github.com/Koeroesi086/canvas-grid#readme">README</a>.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>MIT licensed. <a href="https://github.com/Koeroesi086/canvas-grid">Source on GitHub</a>.</p>
+</footer>
+</body>
+</html>
