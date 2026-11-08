@@ -154,7 +154,7 @@ A renderer is an object:
 | `row`, `column` | `{ id, index }` of the row and the column header; `row` is undefined for headers, `column` for row numbers |
 | `value`, `formatted` | Raw value and the string after the column's `valueFormatter` |
 | `updatedAt`, `age` | When the value last changed, and ms since then (`Infinity` if it never did) |
-| `now`, `dt` | Frame timestamp and ms since the previous frame |
+| `now`, `dt` | Frame timestamp and ms since the previous draw (the grid only draws when something changed, so this can be long) |
 | `valueChanged` | The formatted value differs from what was drawn last time |
 | `forced` | Everything is being redrawn (first draw, resize, scrolling) |
 | `isScrolling` | The grid is being scrolled |
