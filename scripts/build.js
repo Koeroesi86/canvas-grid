@@ -6,7 +6,7 @@ const webpack = require('webpack');
 process.env.BABEL_ENV = 'production';
 process.env.NODE_ENV = 'production';
 
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const config = require('../webpack.config');
 
@@ -18,13 +18,20 @@ process.on('unhandledRejection', err => {
   throw err
 });
 
-const logger = (err, stats) => {
+webpack(config, (err, stats) => {
+  if (err) {
+    console.error(err);
+    process.exit(1);
+  }
+
   console.log(stats.toString({
     colors: true,
     errors: true,
     errorDetails: true,
     warnings: true,
   }));
-};
 
-webpack(config, logger);
+  if (stats.hasErrors()) {
+    process.exit(1);
+  }
+});

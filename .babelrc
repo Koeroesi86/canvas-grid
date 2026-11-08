@@ -1,14 +1,8 @@
 {
   "presets": [
-    "es2015",
-    "stage-0"
+    ["@babel/preset-env", { "targets": { "esmodules": true }, "modules": false }]
   ],
   "plugins": [
-    "babel-plugin-syntax-jsx",
-    "babel-plugin-transform-react-jsx",
-    "transform-custom-element-classes",
-    "transform-es2015-classes",
-    "transform-runtime",
-    "transform-decorators-legacy"
+    ["@babel/plugin-transform-react-jsx", { "runtime": "classic" }]
   ]
 }
