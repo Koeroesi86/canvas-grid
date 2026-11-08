@@ -38,8 +38,17 @@ export default class CharacterRenderer extends CanvasRenderer<CharacterOptions> 
     }
   }
 
+  set color(color: string) {
+    this.options.color = color;
+  }
+
   clearCache() {
+    super.clearCache();
     this.charWidthCache.clear();
+  }
+
+  protected cacheKey({ value = '', height = 0 }: RenderProps) {
+    return `${this.options.font}|${this.options.color}|${height}|${value}`;
   }
 
   getCharacterWidth(character = '') {
@@ -57,7 +66,7 @@ export default class CharacterRenderer extends CanvasRenderer<CharacterOptions> 
     return width;
   }
 
-  render({ value = '', height = 0 }: RenderProps = {}) {
+  render({ value = '', height = 0 }: RenderProps) {
     this.canvas.width = this.getCharacterWidth(value);
     this.canvas.height = height;
 
