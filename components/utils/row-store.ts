@@ -77,6 +77,8 @@ class RowStore {
 
   /** Removes every row with one of the ids, ignoring unknown ids; returns whether any row was removed. */
   removeMany(ids: Key[]) {
+    if (ids.length === 0) return false;
+
     const removed = new Set(ids.map(String));
     const first = this.items.findIndex(row => removed.has(String(row.id)));
     if (first === -1) return false;
