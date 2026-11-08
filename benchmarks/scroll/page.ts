@@ -4,6 +4,8 @@ import type { RowInput } from '../../components/types';
 declare global {
   interface Window {
     benchmarkReady?: boolean;
+    /** Duration in milliseconds of every grid draw, in order. */
+    drawTimes: number[];
   }
 }
 
@@ -19,6 +21,15 @@ const rows = Array.from({ length: rowCount }, (_, id): RowInput => ({
 
 const grid = document.querySelector('canvas-grid');
 if (!grid) throw new Error('canvas-grid element not found');
+
+// Frame rate saturates at the display refresh rate; the time spent drawing does not.
+window.drawTimes = [];
+const draw = grid.draw.bind(grid);
+grid.draw = (...args) => {
+  const start = performance.now();
+  draw(...args);
+  window.drawTimes.push(performance.now() - start);
+};
 
 grid.setColumns(columns);
 grid.setValues(rows);

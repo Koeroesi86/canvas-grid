@@ -20,6 +20,9 @@ interface ScrollResult {
   frameMedianMs: number;
   frameP95Ms: number;
   frameMaxMs: number;
+  /** Time spent in the grid's draw per frame; unlike the frame rate it is not capped by the display. */
+  drawMeanMs: number;
+  drawP95Ms: number;
   scrolledPx: number;
 }
 
@@ -39,6 +42,7 @@ try {
   await page.goto(`http://127.0.0.1:${port}/benchmarks/scroll/index.html?rows=${rows}&columns=${columns}`);
   await page.waitForFunction(() => window.benchmarkReady === true, undefined, { timeout: 120_000 });
   await page.waitForTimeout(1000);
+  await page.evaluate(() => { window.drawTimes = []; });
 
   const result: ScrollResult = await page.evaluate(({ durationMs, step }) => new Promise<ScrollResult>(resolveResult => {
     const scrollArea = document.querySelector('canvas-grid .scrollArea');
@@ -57,7 +61,10 @@ try {
       const sorted = deltas.slice(1).sort((a, b) => a - b);
       const at = (ratio: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * ratio))];
       const seconds = (now - start) / 1000;
+      const draws = window.drawTimes.toSorted((a, b) => a - b);
       resolveResult({
+        drawMeanMs: Number((draws.reduce((sum, time) => sum + time, 0) / Math.max(1, draws.length)).toFixed(3)),
+        drawP95Ms: Number((draws[Math.min(draws.length - 1, Math.floor(draws.length * 0.95))] ?? 0).toFixed(3)),
         frames: sorted.length,
         seconds: Number(seconds.toFixed(2)),
         fps: Number((sorted.length / seconds).toFixed(1)),
