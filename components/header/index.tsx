@@ -51,6 +51,14 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
     return this.textRenderer.font;
   }
 
+  set pixelRatio(pixelRatio: number) {
+    this.textRenderer.pixelRatio = pixelRatio;
+  }
+
+  get pixelRatio() {
+    return this.textRenderer.pixelRatio;
+  }
+
   clearCache() {
     this.textRenderer.clearCache();
   }

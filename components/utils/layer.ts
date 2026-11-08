@@ -21,13 +21,31 @@ class Layer {
     this.ctx = getContext2d(this.canvas, { alpha });
   }
 
-  resize(width: number, height: number) {
-    this.canvas.width = width;
-    this.canvas.height = height;
+  /** Size in CSS pixels; the backing store is `pixelRatio` times larger. */
+  width = 0;
+
+  height = 0;
+
+  pixelRatio = 1;
+
+  /**
+   * Resizes the canvas, scaling the context so renderers keep drawing in CSS pixels.
+   * Returns false, leaving the canvas untouched, when nothing changed (assigning a size clears the canvas).
+   */
+  resize(width: number, height: number, pixelRatio = 1) {
+    if (width === this.width && height === this.height && pixelRatio === this.pixelRatio) return false;
+
+    this.width = width;
+    this.height = height;
+    this.pixelRatio = pixelRatio;
+    this.canvas.width = Math.round(width * pixelRatio);
+    this.canvas.height = Math.round(height * pixelRatio);
+    this.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    return true;
   }
 
   clear() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.clearRect(0, 0, this.width, this.height);
   }
 }
 
