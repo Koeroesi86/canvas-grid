@@ -167,6 +167,7 @@ class CanvasGridComponent extends HTMLElement {
     if (prevSize !== this.totalHeight) {
       this.refreshScrollbar();
     }
+    this.requestRender();
   }, 50);
 
   agApi: AgApi;
@@ -342,6 +343,7 @@ class CanvasGridComponent extends HTMLElement {
       this.scrollXOffset = Math.round(scrollXOffset);
       this.scrollYOffset = Math.round(scrollYOffset);
       debounceAfterScroll();
+      this.requestRender();
     }, 10);
     this.scrollArea.addEventListener('scroll', () => {
       const { scrollTop, scrollLeft } = this.scrollArea;
@@ -367,6 +369,15 @@ class CanvasGridComponent extends HTMLElement {
 
   cancelRender() {
     if (this.animationFrame !== undefined) cancelAnimationFrame(this.animationFrame);
+    this.animationFrame = undefined;
+  }
+
+  /**
+   * Schedules a draw for the next animation frame. Nothing is drawn while the grid is idle:
+   * scrolling, data changes and resizes request a draw, and `draw` requests the next one itself while a cell animates.
+   */
+  requestRender() {
+    this.animationFrame ??= requestAnimationFrame(() => this.render());
   }
 
   updateLastRender() {
@@ -374,12 +385,14 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   render() {
+    this.animationFrame = undefined;
     const delta = new Date().valueOf() - this.lastRender;
-    if (delta >= (1000 / this.fps)) {
-      this.draw();
-      this.updateLastRender();
+    if (delta < (1000 / this.fps)) {
+      this.requestRender();
+      return;
     }
-    this.animationFrame = requestAnimationFrame(() => this.render());
+    this.draw();
+    this.updateLastRender();
   }
 
   hasScrolled() {
@@ -450,6 +463,8 @@ class CanvasGridComponent extends HTMLElement {
     this.cell.dt = now - this.lastDraw;
     this.cell.isScrolling = this.isScrolling;
     this.lastDraw = now;
+    // the loading indicator animates until there is data
+    let keepDrawing = this._dataCollection.length === 0;
 
     if ((forced || this.hasXScrolled()) && this.showHeaders) {
       this.renderHeaders();
@@ -523,6 +538,7 @@ class CanvasGridComponent extends HTMLElement {
             // an animation gets one last frame after it stops, so its final state is what stays on screen
             if (redrawAll || valueChanged || animating || entry.animating) this.paintAll(refs);
             entry.animating = animating;
+            keepDrawing ||= animating;
           }
           entry.value = displayedValue;
           currentX += Math.round(header.width);
@@ -535,6 +551,7 @@ class CanvasGridComponent extends HTMLElement {
     }
     this.prevScrollYOffset = this.scrollYOffset;
     this.prevScrollXOffset = this.scrollXOffset;
+    if (keepDrawing) this.requestRender();
   }
 
   renderRowNumber(row: { index: number; height?: number }, y: number) {
@@ -574,7 +591,6 @@ class CanvasGridComponent extends HTMLElement {
     this.cellValueRenderer.pixelRatio = pixelRatio;
     this.headerCellRenderer.pixelRatio = pixelRatio;
     this.forceDraw();
-    this.render();
   }
 
   /** Redraws when the element changes size, instead of checking on every frame. */
