@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
+import { STALL_FRAME_MS } from '../scripts/benchmark-comparison.mts';
 
 /** Directory serving components/ and benchmarks/scroll/; defaults to this repository, set it to measure another checkout. */
 const root = resolve(process.env.SCROLL_ROOT ?? resolve(import.meta.dirname, '..'));
@@ -23,6 +24,8 @@ interface ScrollResult {
   /** Time spent in the grid's draw per frame; unlike the frame rate it is not capped by the display. */
   drawMeanMs: number;
   drawP95Ms: number;
+  /** Frames slower than `STALL_FRAME_MS`; catches isolated stalls that percentiles hide. */
+  stalledFrames: number;
   scrolledPx: number;
 }
 
@@ -42,9 +45,25 @@ try {
   await page.goto(`http://127.0.0.1:${port}/benchmarks/scroll/index.html?rows=${rows}&columns=${columns}`);
   await page.waitForFunction(() => window.benchmarkReady === true, undefined, { timeout: 120_000 });
   await page.waitForTimeout(1000);
+  // Scroll for a moment first so the measurement sees steady state, not the cold first frames after idle.
+  await page.evaluate(({ step }) => new Promise<void>(resolveWarmUp => {
+    const scrollArea = document.querySelector('canvas-grid .scrollArea');
+    if (!scrollArea) throw new Error('scroll area not found');
+    let frames = 0;
+    const tick = () => {
+      scrollArea.scrollTop += step;
+      if (++frames < 60) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      scrollArea.scrollTop = 0;
+      requestAnimationFrame(() => requestAnimationFrame(() => resolveWarmUp()));
+    };
+    requestAnimationFrame(tick);
+  }), { step });
   await page.evaluate(() => { window.drawTimes = []; });
 
-  const result: ScrollResult = await page.evaluate(({ durationMs, step }) => new Promise<ScrollResult>(resolveResult => {
+  const result: ScrollResult = await page.evaluate(({ durationMs, step, stallFrameMs }) => new Promise<ScrollResult>(resolveResult => {
     const scrollArea = document.querySelector('canvas-grid .scrollArea');
     if (!scrollArea) throw new Error('scroll area not found');
     const deltas: number[] = [];
@@ -71,11 +90,12 @@ try {
         frameMedianMs: Number(at(0.5).toFixed(2)),
         frameP95Ms: Number(at(0.95).toFixed(2)),
         frameMaxMs: Number(sorted[sorted.length - 1].toFixed(2)),
+        stalledFrames: sorted.filter(delta => delta > stallFrameMs).length,
         scrolledPx: scrollArea.scrollTop,
       });
     };
     requestAnimationFrame(tick);
-  }), { durationMs, step });
+  }), { durationMs, step, stallFrameMs: STALL_FRAME_MS });
 
   console.log(`Scroll benchmark: ${rows} rows x ${columns} columns, ${step}px per frame`);
   console.table([result]);
