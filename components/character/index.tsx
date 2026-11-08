@@ -1,23 +1,38 @@
-import Collection from "../utils/collection";
-import Renderer from "../utils/renderer";
+import Collection from '../utils/collection';
+import { CanvasRenderer } from '../utils/renderer';
+import { getContext2d } from '../utils/canvas';
+import type { RenderProps } from '../types';
 
-export default class CharacterRenderer extends Renderer {
-  constructor(options = {}) {
-    super(options);
+export interface CharacterOptions {
+  font: string;
+  color: string;
+  alpha: boolean;
+  clearBeforeRender: boolean;
+}
 
-    this.charWidthCache = new Collection();
+export default class CharacterRenderer extends CanvasRenderer<CharacterOptions> {
+  static readonly defaultOptions: CharacterOptions = {
+    font: '12px monospace',
+    color: '#fff',
+    alpha: true,
+    clearBeforeRender: true,
+  };
 
-    this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d', { alpha: this.options.alpha });
+  private readonly charWidthCache = new Collection<number>();
+
+  private readonly canvas = document.createElement('canvas');
+
+  private readonly ctx: CanvasRenderingContext2D;
+
+  constructor(options: Partial<CharacterOptions> = {}) {
+    super({ ...CharacterRenderer.defaultOptions, ...options });
+
+    this.ctx = getContext2d(this.canvas, { alpha: this.options.alpha });
     this.ctx.textAlign = 'left';
     this.ctx.textBaseline = 'top';
-
-    this.render = this.render.bind(this);
-    this.clearCache = this.clearCache.bind(this);
-    this.getCharacterWidth = this.getCharacterWidth.bind(this);
   }
 
-  set font(font) {
+  set font(font: string) {
     if (this.options.font !== font) {
       this.options.font = font;
     }
@@ -42,18 +57,7 @@ export default class CharacterRenderer extends Renderer {
     return width;
   }
 
-  render(props = {}) {
-    const {
-      value = '',
-      x = 0,
-      y = 0,
-      width = 0,
-      height = 0,
-      isUpdated = false,
-      isValueUpdated = false,
-      forcedDraw = false,
-      diff = 0
-    } = props;
+  render({ value = '', height = 0 }: RenderProps = {}) {
     this.canvas.width = this.getCharacterWidth(value);
     this.canvas.height = height;
 
@@ -73,10 +77,3 @@ export default class CharacterRenderer extends Renderer {
     return this.canvas;
   }
 }
-
-CharacterRenderer.defaultOptions = {
-  font: '12px monospace',
-  color: '#fff',
-  alpha: true,
-  clearBeforeRender: true,
-};

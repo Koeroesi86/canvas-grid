@@ -1,32 +1,24 @@
-const { resolve } = require('path');
-const { existsSync } = require('fs');
-const { removeSync } = require('fs-extra');
-const webpack = require('webpack');
-const WebpackDevServer = require('webpack-dev-server');
+import { rmSync } from 'node:fs';
+import { resolve } from 'node:path';
+import webpack from 'webpack';
+import WebpackDevServer from 'webpack-dev-server';
+import { createConfig } from '../webpack.config.mts';
+import exampleServer from '../server/example.mts';
 
 process.env.BABEL_ENV = 'development';
 process.env.NODE_ENV = 'development';
+process.env.DEV_PORT ||= '3000';
 
-if (!process.env.DEV_PORT) {
-  process.env.DEV_PORT = '3000';
-}
-
-const config = require('../webpack.config');
-const exampleServer = require('../server/example');
-
-if (existsSync(resolve(__dirname, '../build'))) {
-  removeSync(resolve(__dirname, '../build'))
-}
+rmSync(resolve(import.meta.dirname, '../build'), { recursive: true, force: true });
 
 process.on('unhandledRejection', err => {
-  throw err
+  throw err;
 });
 
-const port = process.env.DEV_PORT;
-const compiler = webpack(config);
+const port = Number(process.env.DEV_PORT);
+const compiler = webpack(createConfig('development'));
 // HMR/live-reload sockets are disabled: the example data server shares this http server's websocket upgrades.
 const devServer = new WebpackDevServer({
-  ...config.devServer,
   host: '0.0.0.0',
   port,
   open: false,
@@ -55,7 +47,6 @@ const devServer = new WebpackDevServer({
   },
 }, compiler);
 
-devServer.start().then(() => {
-  console.log(`Starting server on http://localhost:${port}`);
-  exampleServer(devServer.server);
-});
+await devServer.start();
+console.log(`Starting server on http://localhost:${port}`);
+exampleServer(devServer.server);

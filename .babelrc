@@ -1,6 +1,7 @@
 {
   "presets": [
-    ["@babel/preset-env", { "targets": { "esmodules": true }, "modules": false }]
+    ["@babel/preset-env", { "targets": { "esmodules": true }, "modules": false }],
+    ["@babel/preset-typescript", { "onlyRemoveTypeImports": true }]
   ],
   "plugins": [
     ["@babel/plugin-transform-react-jsx", { "runtime": "classic" }]

@@ -8,7 +8,7 @@ canvas-grid {
     padding: 0;
   }
 
-  .drawingLayer {
+  & .drawingLayer {
     position: absolute;
     top: 0;
     left: 0;
@@ -16,18 +16,20 @@ canvas-grid {
     height: 100%;
 
     &.background {
-      //z-index: 1;
-      //background-color: #333;
+      /* z-index: 1; */
+      /* background-color: #333; */
     }
+
     &.content {
-      //z-index: 2;
+      /* z-index: 2; */
     }
+
     &.header {
-      //z-index: 3;
+      /* z-index: 3; */
     }
   }
 
-  .scrollArea {
+  & .scrollArea {
     position: absolute;
     top: 0;
     left: 0;
@@ -38,7 +40,7 @@ canvas-grid {
     backface-visibility: hidden;
     will-change: transform;
 
-    &> div {
+    & > div {
       will-change: scroll-position, transform;
     }
   }
