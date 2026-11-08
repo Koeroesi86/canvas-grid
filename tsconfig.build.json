@@ -9,5 +9,5 @@
     "outDir": "build/types"
   },
   "include": ["components"],
-  "exclude": ["components/example.ts"]
+  "exclude": ["components/example.ts", "components/**/*.test.ts"]
 }

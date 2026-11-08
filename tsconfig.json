@@ -17,5 +17,5 @@
     "noUnusedParameters": true,
     "skipLibCheck": true
   },
-  "include": ["components", "server", "scripts", "vite.config.mts"]
+  "include": ["components", "server", "scripts", "benchmarks", "vite.config.mts", "vitest.config.mts", "vitest.bench.config.mts"]
 }
