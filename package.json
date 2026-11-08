@@ -7,10 +7,11 @@
     "access": "public"
   },
   "scripts": {
-    "dev": "node scripts/dev.js",
-    "build": "node scripts/build.js",
-    "serve-local": "node server/exampleServe.js",
-    "test": "echo \"To be concluded...\""
+    "dev": "node scripts/dev.mts",
+    "build": "node scripts/build.mts",
+    "serve-local": "node server/example-serve.mts",
+    "typecheck": "tsc --noEmit",
+    "test": "yarn typecheck"
   },
   "keywords": [],
   "author": {
@@ -23,18 +24,21 @@
     "@babel/core": "^8.1.0",
     "@babel/plugin-transform-react-jsx": "^8.0.1",
     "@babel/preset-env": "^8.0.7",
+    "@babel/preset-typescript": "^8.0.7",
+    "@types/lodash.debounce": "^4.0.9",
+    "@types/lodash.throttle": "^4.1.9",
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
     "babel-loader": "^10.1.1",
     "classnames": "^2.5.1",
     "css-loader": "^7.1.5",
     "dotenv": "^18.0.9",
-    "fs-extra": "^11.4.1",
     "html-webpack-plugin": "^5.6.8",
     "lodash.debounce": "^4.0.8",
     "lodash.throttle": "^4.1.1",
     "nodemon": "^3.1.14",
-    "sass": "^1.108.1",
-    "sass-loader": "^17.1.0",
     "style-loader": "^4.0.0",
+    "typescript": "^7.0.2",
     "webpack": "^5.112.2",
     "webpack-dev-server": "^6.1.0",
     "ws": "^8.22.1"

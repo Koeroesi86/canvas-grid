@@ -1,16 +1,20 @@
-const WebSocket = require('ws');
+import type { Server } from 'node:http';
+import dotenv from 'dotenv';
+import { WebSocketServer } from 'ws';
 
-require('dotenv').config({ quiet: true });
+dotenv.config({ quiet: true });
 
 const rowCount = 500;
 const columnCount = 30;
 
-module.exports = (server) => {
+type Row = { id: number } & Record<string, string | number>;
+
+export default (server?: Server) => {
   console.log('Initialising server');
 
-  const wsServer = new WebSocket.Server(server ? { server } : { port: process.env.DEV_PORT || '3000' });
+  const wsServer = new WebSocketServer(server ? { server } : { port: Number(process.env.DEV_PORT || '3000') });
 
-  const data = new Map();
+  const data = new Map<number, Row>();
   const getRandomValue = () => (Math.random() * 100).toFixed(10).toString();
 
   const randomText = () => {
@@ -32,7 +36,7 @@ module.exports = (server) => {
   const init = () => {
     // fill up initial data
     for (let r = 0; r <= rowCount; r++) {
-      const row = { id: r };
+      const row: Row = { id: r };
       for (let column = 0; column <= columnCount; column++) {
         row[column] = getRandomValue();
       }
@@ -47,10 +51,7 @@ module.exports = (server) => {
     ws.on('message', message => {
       console.log(`Received message => ${message}`)
     });
-    const initialData = [];
-    data.forEach(row => {
-      initialData.push(row);
-    });
+    const initialData = [...data.values()];
     ws.send(JSON.stringify({ columns: Object.keys(initialData[0]) }));
     ws.send(JSON.stringify({ all: initialData }));
   });

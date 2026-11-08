@@ -1,31 +1,33 @@
-class Collection {
-  constructor() {
-    this.items = {};
-    this.keys = [];
+import type { Key } from '../types';
 
+class Collection<T> {
+  private items: Record<Key, T> = {};
+
+  keys: Key[] = [];
+
+  constructor() {
     this.get = this.get.bind(this);
     this.set = this.set.bind(this);
     this.clear = this.clear.bind(this);
     this.forEach = this.forEach.bind(this);
   }
 
-  get(key) {
+  get(key: Key): T | undefined {
     return this.items[key];
   }
 
-  set(key, value) {
+  set(key: Key, value: T) {
     this.items[key] = value;
     if (!this.keys.includes(key)) {
       this.keys.push(key);
     }
   }
 
-  add(value) {
+  add(value: T) {
     this.set(this.keys.length, value);
   }
 
-  delete(key) {
-    this.items[key] = null;
+  delete(key: Key) {
     delete this.items[key];
     const index = this.keys.indexOf(key);
     if (index !== -1) {
@@ -33,7 +35,7 @@ class Collection {
     }
   }
 
-  clear(matcher) {
+  clear(matcher?: (item: T, key: Key) => boolean) {
     if (typeof matcher === 'function') {
       this.forEach((item, key) => {
         if (matcher(item, key)) this.delete(key);
@@ -44,7 +46,7 @@ class Collection {
     }
   }
 
-  forEach(fn) {
+  forEach(fn: (item: T, key: Key) => void) {
     this.keys.forEach(key => {
       fn(this.items[key], key);
     });

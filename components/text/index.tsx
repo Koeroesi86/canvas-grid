@@ -1,13 +1,50 @@
 import React from '../utils/jsx';
-import Renderer from "../utils/renderer";
-import CharacterRenderer from "../character";
+import { CanvasRenderer } from '../utils/renderer';
+import { getContext2d } from '../utils/canvas';
+import CharacterRenderer from '../character';
+import type { RenderProps } from '../types';
 
-class TextRenderer extends Renderer {
-  constructor(options = {}) {
-    super(options);
+export interface TextOptions {
+  ellipsis: string;
+  characters: string;
+  alpha: boolean;
+  cellPadding: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+  font: string;
+  color: string;
+  isEllipsisRight: boolean;
+}
 
-    this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d', { alpha: this.options.alpha });
+class TextRenderer extends CanvasRenderer<TextOptions> {
+  static readonly defaultOptions: TextOptions = {
+    ellipsis: '…',
+    characters: '',
+    alpha: true,
+    cellPadding: {
+      top: 3,
+      right: 3,
+      bottom: 3,
+      left: 3,
+    },
+    font: '12px monospace',
+    color: '#fff',
+    isEllipsisRight: true,
+  };
+
+  private readonly canvas = document.createElement('canvas');
+
+  private readonly ctx: CanvasRenderingContext2D;
+
+  private readonly characterRenderer: CharacterRenderer;
+
+  constructor(options: Partial<TextOptions> = {}) {
+    super({ ...TextRenderer.defaultOptions, ...options });
+
+    this.ctx = getContext2d(this.canvas, { alpha: this.options.alpha });
     this.ctx.textAlign = 'left';
     this.ctx.textBaseline = 'top';
 
@@ -15,14 +52,9 @@ class TextRenderer extends Renderer {
       font: this.options.font,
       color: this.options.color,
     });
-
-    this.render = this.render.bind(this);
-    this.clearCache = this.clearCache.bind(this);
-    this.preWarmCache = this.preWarmCache.bind(this);
-    this.getTextWidth = this.getTextWidth.bind(this);
   }
 
-  set font(font) {
+  set font(font: string) {
     if (this.options.font !== font) {
       this.options.font = font;
       this.characterRenderer.font = font;
@@ -34,16 +66,24 @@ class TextRenderer extends Renderer {
     return this.options.font;
   }
 
+  set color(color: string) {
+    this.options.color = color;
+  }
+
+  get color() {
+    return this.options.color;
+  }
+
   clearCache() {
     this.characterRenderer.clearCache();
-    React.invalidateCache((_, key) => /^characterRenderer-/.test(key))
+    React.invalidateCache((_, key) => /^characterRenderer-/.test(`${key}`));
   }
 
   preWarmCache() {
     // const { characters } = this.options;
     // for (let i = 0; i < characters.length; i++) {
     //   const character = characters.charAt(i);
-    //   const buffer = <this.characterRenderer
+    //   const buffer = <this.characterRenderer.element
     //     key={`characterRenderer-${character}-${this.options.font}`}
     //     value={character}
     //     width={this.getTextWidth(character)}
@@ -52,7 +92,7 @@ class TextRenderer extends Renderer {
     // }
   }
 
-  getTextWidth(text) {
+  getTextWidth(text: string) {
     let totalWidth = 0;
     for (let i = 0; i < text.length; i++) {
       const character = text.charAt(i);
@@ -61,18 +101,7 @@ class TextRenderer extends Renderer {
     return totalWidth;
   }
 
-  render(props = {}) {
-    const {
-      value = '',
-      x = 0,
-      y = 0,
-      width = 0,
-      height = 0,
-      isUpdated = false,
-      isValueUpdated = false,
-      forcedDraw = false,
-      diff = 0
-    } = props;
+  render({ value = '', x = 0, y = 0, width = 0, height = 0 }: RenderProps = {}) {
     this.ctx.clearRect(x, y, width, height);
 
     const ellipsisWidth = this.characterRenderer.getCharacterWidth(this.options.ellipsis);
@@ -89,7 +118,7 @@ class TextRenderer extends Renderer {
       const characterWidth = Math.round(this.characterRenderer.getCharacterWidth(character));
 
       if (Math.ceil(currentWidth + characterWidth) < availableWidth) {
-        this.ctx.drawImage(<this.characterRenderer
+        this.ctx.drawImage(<this.characterRenderer.element
           key={`characterRenderer-${character}-${this.options.font}`}
           value={character}
           width={characterWidth}
@@ -98,7 +127,7 @@ class TextRenderer extends Renderer {
         currentWidth += characterWidth;
         currentXOffset += characterWidth;
       } else {
-        this.ctx.drawImage(<this.characterRenderer
+        this.ctx.drawImage(<this.characterRenderer.element
           key={`characterRenderer-${this.options.ellipsis}-${this.options.font}`}
           value={this.options.ellipsis}
           width={characterWidth}
@@ -111,21 +140,5 @@ class TextRenderer extends Renderer {
     return this.canvas;
   }
 }
-
-TextRenderer.defaultOptions = {
-  ellipsis: '…',
-  characters: '',
-  alpha: true,
-  cellPadding: {
-    top: 3,
-    right: 3,
-    bottom: 3,
-    left: 3,
-  },
-  font: '12px monospace',
-  color: '#fff',
-  isEllipsisRight: true,
-  canvas: null,
-};
 
 export default TextRenderer;
