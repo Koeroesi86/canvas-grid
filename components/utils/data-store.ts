@@ -82,9 +82,8 @@ class DataStore {
     const rowId = this.environment.getRowId(row);
     const rowData = this.rows.get(rowId);
     if (!rowData) {
-      const currentIndex = this.rows.keys.indexOf(rowId);
       this.rows.set(rowId, {
-        index: currentIndex !== -1 ? currentIndex : this.rows.keys.length,
+        index: this.rows.length,
         height: this.environment.getCellHeight(),
         columns: this.createColumns(row, now),
       });
