@@ -1,10 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "target": "ES2020",
     "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
     "allowImportingTsExtensions": false,
-    "sourceMap": true
+    "rootDir": "components",
+    "outDir": "build/types"
   },
-  "include": ["components"]
+  "include": ["components"],
+  "exclude": ["components/example.ts"]
 }

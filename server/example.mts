@@ -1,18 +1,19 @@
-import type { Server } from 'node:http';
-import dotenv from 'dotenv';
+import type { IncomingMessage } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { WebSocketServer } from 'ws';
+import type { ServerOptions } from 'ws';
 
-dotenv.config({ quiet: true });
+export const EXAMPLE_PATH = '/example';
 
 const rowCount = 500;
 const columnCount = 30;
 
 type Row = { id: number } & Record<string, string | number>;
 
-export default (server?: Server) => {
+export const createExampleServer = (options: ServerOptions) => {
   console.log('Initialising server');
 
-  const wsServer = new WebSocketServer(server ? { server } : { port: Number(process.env.DEV_PORT || '3000') });
+  const wsServer = new WebSocketServer(options);
 
   const data = new Map<number, Row>();
   const getRandomValue = () => (Math.random() * 100).toFixed(10).toString();
@@ -57,4 +58,22 @@ export default (server?: Server) => {
   });
 
   init();
+
+  return wsServer;
+};
+
+/** Serves the example data on `EXAMPLE_PATH` of an existing http server, leaving other upgrades (e.g. Vite HMR) alone. */
+interface UpgradeEmitter {
+  on(event: 'upgrade', listener: (request: IncomingMessage, socket: Duplex, head: Buffer) => void): unknown;
+}
+
+export const attachExampleServer = (server: UpgradeEmitter) => {
+  const wsServer = createExampleServer({ noServer: true });
+
+  server.on('upgrade', (request, socket, head) => {
+    if (request.url !== EXAMPLE_PATH) return;
+    wsServer.handleUpgrade(request, socket, head, ws => wsServer.emit('connection', ws, request));
+  });
+
+  return wsServer;
 };

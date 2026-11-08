@@ -4,7 +4,7 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "types": ["node"],
+    "types": ["node", "vite/client"],
     "jsx": "react",
     "jsxFactory": "React.createElement",
     "strict": true,
@@ -17,5 +17,5 @@
     "noUnusedParameters": true,
     "skipLibCheck": true
   },
-  "include": ["components", "server", "scripts", "webpack.config.mts"]
+  "include": ["components", "server", "vite.config.mts"]
 }
