@@ -430,15 +430,15 @@ class CanvasGridComponent extends HTMLElement {
 
   renderRowNumber(row: { index: number; height?: number }, y: number) {
     if (!this.isInViewport(0, y, this.rowNumbersWidth, row.height)) return;
-    this.headerDrawingLayer.render(
-      `${row.index + 1}`,
-      0,
-      Math.ceil(y),
-      this.rowNumbersWidth,
-      row.height,
-      true,
-      true
-    );
+    this.headerDrawingLayer.render({
+      value: `${row.index + 1}`,
+      x: 0,
+      y: Math.ceil(y),
+      width: this.rowNumbersWidth,
+      height: row.height,
+      isUpdated: true,
+      isValueUpdated: true,
+    });
   }
 
   forceDraw() {
@@ -466,28 +466,28 @@ class CanvasGridComponent extends HTMLElement {
 
   renderBrick() {
     if (this.showHeaders && this.showRowNumbers && this._headerBackgroundColor) {
-      this.headerDrawingLayer.render(
-        '',
-        0,
-        0,
-        this.rowNumbersWidth,
-        this.headerHeight,
-        true,
-        true
-      );
+      this.headerDrawingLayer.render({
+        value: '',
+        x: 0,
+        y: 0,
+        width: this.rowNumbersWidth,
+        height: this.headerHeight,
+        isUpdated: true,
+        isValueUpdated: true,
+      });
     }
   }
 
   renderHeader(header: ColumnHeader, x: number) {
-    this.headerDrawingLayer.render(
-      header.displayName,
+    this.headerDrawingLayer.render({
+      value: header.displayName,
       x,
-      0,
-      header.width,
-      this.headerHeight,
-      true,
-      true
-    );
+      y: 0,
+      width: header.width,
+      height: this.headerHeight,
+      isUpdated: true,
+      isValueUpdated: true,
+    });
   }
 
   renderHeaders() {
@@ -580,8 +580,9 @@ class CanvasGridComponent extends HTMLElement {
     forcedDraw: boolean,
     diff: number,
   ) {
-    this.cellBackgroundDrawingLayer.render('', x, y, width, height, isUpdated, isValueUpdated, forcedDraw, diff);
-    this.cellValueDrawingLayer.render(value, x, y, width, height, isUpdated, isValueUpdated, forcedDraw, diff);
+    const props = { value, x, y, width, height, isUpdated, isValueUpdated, forcedDraw, diff };
+    this.cellBackgroundDrawingLayer.render(props);
+    this.cellValueDrawingLayer.render(props);
   }
 
   setColumns(columns: ColumnDefinition[]) {

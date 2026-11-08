@@ -1,8 +1,8 @@
-import React from '../utils/jsx';
+import React, { Group } from '../utils/jsx';
 import Renderer from '../utils/renderer';
 import { getContext2d } from '../utils/canvas';
-import RectangleRenderer from '../rectangle';
-import type { PositionalRenderer } from '../types';
+import Rect from '../rectangle';
+import type { PositionalRenderer, RenderProps } from '../types';
 
 export interface CellBackgroundOptions {
   canvas: HTMLCanvasElement;
@@ -34,8 +34,6 @@ class CellBackground extends Renderer<CellBackgroundOptions> implements Position
 
   isScrolling = false;
 
-  private readonly rectangleRenderer: RectangleRenderer;
-
   private readonly ctx: CanvasRenderingContext2D;
 
   private readonly hasBottomBorder: boolean;
@@ -45,61 +43,35 @@ class CellBackground extends Renderer<CellBackgroundOptions> implements Position
   constructor(options: Pick<CellBackgroundOptions, 'canvas'> & Partial<CellBackgroundOptions>) {
     super({ ...CellBackground.defaultOptions, ...options });
 
-    this.rectangleRenderer = new RectangleRenderer({
-      alpha: this.options.alpha,
-    });
     this.ctx = getContext2d(this.options.canvas, { alpha: this.options.alpha });
 
     this.hasBottomBorder = this.options.borderBottomWidth > 0 && !!this.options.borderBottomColor;
     this.hasRightBorder = this.options.borderRightWidth > 0 && !!this.options.borderRightColor;
   }
 
-  render(_value = '', x = 0, y = 0, width = 0, height = 0, _isUpdated = false, _isValueUpdated = false, _forcedDraw = false, diff = 0) {
-    this.rectangleRenderer.color = this.options.background;
-    this.ctx.drawImage(<this.rectangleRenderer.element
-      key={`cellBackground-${this.rectangleRenderer.color}-${width}-${height}`}
-      width={width}
-      height={height}
-    />, x, y);
+  /** Flash opacity for a cell updated `diff` ms ago: fades in, then out, then 0. */
+  private getFlashAlpha(diff: number) {
+    if (!this.options.enableFlashing || this.isScrolling) return 0;
 
-    if (this.options.enableFlashing && !this.isScrolling) {
-      let alpha = 0;
-      const totalFlashDuration = this.options.flashInDuration + this.options.flashOutDuration;
-      if (diff <= totalFlashDuration) {
-        if (diff < this.options.flashInDuration) {
-          alpha = (diff / this.options.flashInDuration);
-        } else if (diff > this.options.flashInDuration && diff <= totalFlashDuration) {
-          alpha = ((totalFlashDuration - diff) / this.options.flashOutDuration);
-        }
+    const { flashInDuration, flashOutDuration } = this.options;
+    const alpha = diff < flashInDuration
+      ? diff / flashInDuration
+      : (flashInDuration + flashOutDuration - diff) / flashOutDuration;
+    return Math.max(0, Math.round(alpha * 1000) / 1000);
+  }
 
-        if (alpha > 0) {
-          this.rectangleRenderer.color = `rgba(${this.options.flashRGB}, ${alpha.toFixed(3)})`;
-          this.ctx.drawImage(<this.rectangleRenderer.element
-            key={`cellBackground-${this.rectangleRenderer.color}-${width}-${height}`}
-            width={width}
-            height={height}
-          />, x, y);
-        }
-      }
-    }
+  render({ x = 0, y = 0, width = 0, height = 0, diff = 0 }: RenderProps) {
+    const { background, flashRGB, borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
+    const flash = this.getFlashAlpha(diff);
 
-    if (this.hasRightBorder) {
-      this.rectangleRenderer.color = this.options.borderRightColor;
-      this.ctx.drawImage(<this.rectangleRenderer.element
-        key={`cellBorder-${this.rectangleRenderer.color}-${this.options.borderRightWidth}-${height}`}
-        width={this.options.borderRightWidth}
-        height={height}
-      />, x + width - this.options.borderRightWidth, y);
-    }
-
-    if (this.hasBottomBorder) {
-      this.rectangleRenderer.color = this.options.borderBottomColor;
-      this.ctx.drawImage(<this.rectangleRenderer.element
-        key={`cellBorder-${this.rectangleRenderer.color}-${width}-${this.options.borderBottomWidth}`}
-        width={width}
-        height={this.options.borderBottomWidth}
-      />, x, y + height - this.options.borderBottomWidth);
-    }
+    (
+      <Group>
+        <Rect width={width} height={height} color={background} />
+        {flash > 0 && <Rect width={width} height={height} color={`rgb(${flashRGB})`} alpha={flash} />}
+        {this.hasRightBorder && <Rect x={width - borderRightWidth} width={borderRightWidth} height={height} color={borderRightColor} />}
+        {this.hasBottomBorder && <Rect y={height - borderBottomWidth} width={width} height={borderBottomWidth} color={borderBottomColor} />}
+      </Group>
+    ).draw(this.ctx, x, y);
   }
 }
 

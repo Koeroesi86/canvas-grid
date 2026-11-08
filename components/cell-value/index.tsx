@@ -2,7 +2,7 @@ import React from '../utils/jsx';
 import Renderer from '../utils/renderer';
 import { getContext2d } from '../utils/canvas';
 import TextRenderer from '../text';
-import type { PositionalRenderer } from '../types';
+import type { PositionalRenderer, RenderProps } from '../types';
 
 export interface CellValueOptions {
   canvas: HTMLCanvasElement;
@@ -58,27 +58,12 @@ export default class CellValueRenderer extends Renderer<CellValueOptions> implem
 
   clearCache() {
     this.renderer.clearCache();
-    React.invalidateCache((_, key) => /^cellValue-/.test(`${key}`));
   }
 
-  preWarmCache() {
-    this.renderer.preWarmCache();
-  }
+  render({ value = '', x = 0, y = 0, width = 0, height = 0, isValueUpdated = false, forcedDraw = false }: RenderProps) {
+    if (!isValueUpdated && !forcedDraw) return;
 
-  render(value = '', x = 0, y = 0, width = 0, height = 0, isUpdated = false, isValueUpdated = false, forcedDraw = false, diff = 0) {
-    if (isValueUpdated || forcedDraw) {
-      this.ctx.clearRect(x, y, width, height);
-      this.ctx.drawImage(<this.renderer.element
-        value={value}
-        x={0}
-        y={0}
-        width={width}
-        height={height}
-        isUpdated={isUpdated}
-        isValueUpdated={isValueUpdated}
-        forcedDraw={forcedDraw}
-        diff={diff}
-      />, x, y);
-    }
+    this.ctx.clearRect(x, y, width, height);
+    (<this.renderer.element value={value} width={width} height={height} />).draw(this.ctx, x, y);
   }
 }

@@ -1,4 +1,4 @@
-import type { PositionalRenderer } from '../types';
+import type { PositionalRenderer, RenderProps } from '../types';
 import { getContext2d } from './canvas';
 
 interface DrawingLayerOptions<Renderer extends PositionalRenderer> {
@@ -45,8 +45,8 @@ class DrawingLayer<Renderer extends PositionalRenderer> {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  render(...args: Parameters<PositionalRenderer['render']>) {
-    this.renderer.render(...args);
+  render(props: RenderProps) {
+    this.renderer.render(props);
   }
 }
 

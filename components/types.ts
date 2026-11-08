@@ -32,23 +32,10 @@ export interface RenderProps {
   diff?: number;
 }
 
-/** Function component usable as a JSX tag; renders to a canvas. */
-export type CanvasElement = (props: RenderProps) => HTMLCanvasElement;
-
-/** Renderer drawing straight onto a layer, driven by positional arguments. */
+/** Renderer drawing straight onto a layer. */
 export interface PositionalRenderer {
   isScrolling: boolean;
   clearCache(): void;
   preWarmCache(): void;
-  render(
-    value?: string,
-    x?: number,
-    y?: number,
-    width?: number,
-    height?: number,
-    isUpdated?: boolean,
-    isValueUpdated?: boolean,
-    forcedDraw?: boolean,
-    diff?: number,
-  ): void;
+  render(props: RenderProps): void;
 }
