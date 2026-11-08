@@ -7,6 +7,8 @@ const result = (overrides: Partial<ScrollResult> = {}): ScrollResult => ({
   frameMedianMs: 16,
   frameP95Ms: 20,
   frameMaxMs: 30,
+  drawMeanMs: 5,
+  drawP95Ms: 8,
   ...overrides,
 });
 
@@ -35,27 +37,29 @@ describe('compareResults', () => {
   });
 
   it('treats higher frame times as a regression', () => {
-    assert.ok(find('Frame time p95 (ms)', compareResults([result()], [result({ frameP95Ms: 40 })], 0.3)).regression > 0);
+    assert.ok(find('Draw time p95 (ms)', compareResults([result()], [result({ drawP95Ms: 40 })], 0.3)).regression > 0);
   });
 
   it('fails only past the threshold', () => {
-    assert.equal(find('Frame time p95 (ms)', compareResults([result()], [result({ frameP95Ms: 25 })], 0.3)).failed, false);
-    assert.equal(find('Frame time p95 (ms)', compareResults([result()], [result({ frameP95Ms: 27 })], 0.3)).failed, true);
+    assert.equal(find('Draw time mean (ms)', compareResults([result()], [result({ drawMeanMs: 6.5 })], 0.3)).failed, false);
+    assert.equal(find('Draw time mean (ms)', compareResults([result()], [result({ drawMeanMs: 6.6 })], 0.3)).failed, true);
   });
 
-  it('does not gate on non-gating metrics', () => {
+  it('does not gate on frame rate or frame times, which saturate and come in whole frames', () => {
+    assert.equal(find('Scroll FPS', compareResults([result()], [result({ fps: 20 })], 0.3)).failed, false);
+    assert.equal(find('Frame time p95 (ms)', compareResults([result()], [result({ frameP95Ms: 200 })], 0.3)).failed, false);
     assert.equal(find('Frame time max (ms)', compareResults([result()], [result({ frameMaxMs: 300 })], 0.3)).failed, false);
   });
 
   it('uses the median across runs so one outlier does not decide', () => {
-    const head = [result({ frameP95Ms: 20 }), result({ frameP95Ms: 200 }), result({ frameP95Ms: 21 })];
-    assert.equal(find('Frame time p95 (ms)', compareResults([result()], head, 0.3)).failed, false);
+    const head = [result({ drawMeanMs: 5 }), result({ drawMeanMs: 50 }), result({ drawMeanMs: 5.2 })];
+    assert.equal(find('Draw time mean (ms)', compareResults([result()], head, 0.3)).failed, false);
   });
 });
 
 describe('formatMarkdown', () => {
   it('renders a row per metric and flags regressions', () => {
-    const markdown = formatMarkdown(compareResults([result()], [result({ fps: 20 })], 0.3), 0.3, 1);
-    assert.match(markdown, /\| Scroll FPS \| 60\.00 \| 20\.00 \| \+66\.7% \| regression \|/);
+    const markdown = formatMarkdown(compareResults([result()], [result({ drawMeanMs: 10 })], 0.3), 0.3, 1);
+    assert.match(markdown, /\| Draw time mean \(ms\) \| 5\.00 \| 10\.00 \| \+100\.0% \| regression \|/);
   });
 });

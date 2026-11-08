@@ -9,15 +9,15 @@ import { compareResults, formatMarkdown, type ScrollResult } from './benchmark-c
  * between them so runner noise affects both, then compares medians.
  *
  * Usage: node scripts/compare-benchmarks.mts <base-checkout-directory>
- * Environment: BENCHMARK_RUNS (default 3), BENCHMARK_THRESHOLD (default 0.3 = 30%).
+ * Environment: BENCHMARK_RUNS (default 5), BENCHMARK_THRESHOLD (default 0.25 = 25%).
  */
 const [baseArgument] = process.argv.slice(2);
 if (!baseArgument) throw new Error('Usage: node scripts/compare-benchmarks.mts <base-checkout-directory>');
 
 const headRoot = resolve(import.meta.dirname, '..');
 const baseRoot = resolve(baseArgument);
-const runs = Number(process.env.BENCHMARK_RUNS ?? 3);
-const threshold = Number(process.env.BENCHMARK_THRESHOLD ?? 0.3);
+const runs = Number(process.env.BENCHMARK_RUNS ?? 5);
+const threshold = Number(process.env.BENCHMARK_THRESHOLD ?? 0.25);
 const outputDirectory = mkdtempSync(join(tmpdir(), 'scroll-benchmark-'));
 
 // The harness always comes from head; only the components under test differ.

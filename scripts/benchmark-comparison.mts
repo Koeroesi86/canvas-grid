@@ -3,6 +3,8 @@ export interface ScrollResult {
   frameMedianMs: number;
   frameP95Ms: number;
   frameMaxMs: number;
+  drawMeanMs: number;
+  drawP95Ms: number;
 }
 
 type Metric = keyof ScrollResult;
@@ -26,8 +28,11 @@ export interface MetricComparison {
 }
 
 const metrics: MetricDefinition[] = [
-  { key: 'fps', label: 'Scroll FPS', higherIsBetter: true, gating: true },
-  { key: 'frameP95Ms', label: 'Frame time p95 (ms)', higherIsBetter: false, gating: true },
+  // Gating on time spent drawing: the frame rate is capped by the display and frame times come in multiples of a frame.
+  { key: 'drawMeanMs', label: 'Draw time mean (ms)', higherIsBetter: false, gating: true },
+  { key: 'drawP95Ms', label: 'Draw time p95 (ms)', higherIsBetter: false, gating: true },
+  { key: 'fps', label: 'Scroll FPS', higherIsBetter: true, gating: false },
+  { key: 'frameP95Ms', label: 'Frame time p95 (ms)', higherIsBetter: false, gating: false },
   { key: 'frameMedianMs', label: 'Frame time median (ms)', higherIsBetter: false, gating: false },
   { key: 'frameMaxMs', label: 'Frame time max (ms)', higherIsBetter: false, gating: false },
 ];
@@ -55,7 +60,7 @@ const formatPercent = (ratio: number) => `${ratio > 0 ? '+' : ''}${(ratio * 100)
 export const formatMarkdown = (comparisons: MetricComparison[], threshold: number, runs: number) => [
   '## Scroll benchmark: base vs head',
   '',
-  `Median of ${runs} alternating runs on the same runner. Positive change means worse. Fails when FPS or p95 frame time regresses by more than ${formatPercent(threshold).replace('+', '')}.`,
+  `Median of ${runs} alternating runs on the same runner. Positive change means worse. Fails when mean or p95 draw time regresses by more than ${formatPercent(threshold).replace('+', '')}.`,
   '',
   '| Metric | Base | Head | Change | |',
   '|---|---|---|---|---|',
