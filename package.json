@@ -47,6 +47,6 @@
     "webpack-dev-middleware": "^3.7.0",
     "webpack-dev-server": "^3.7.2",
     "webpackbar": "^3.2.0",
-    "ws": "^7.0.1"
+    "ws": "^8.22.1"
   }
 }
