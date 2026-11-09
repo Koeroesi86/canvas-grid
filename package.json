@@ -21,7 +21,6 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run typecheck && vite build && tsc -p tsconfig.build.json",
-    "serve-local": "node server/example-serve.mts",
     "site": "node scripts/serve-site.mts",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && node --test scripts/*.test.mts && vitest run",
@@ -40,13 +39,11 @@
     "@types/lodash.debounce": "^4.0.9",
     "@types/lodash.throttle": "^4.1.9",
     "@types/node": "^26.6.6",
-    "@types/ws": "^8.18.2",
     "lodash.debounce": "^4.0.8",
     "lodash.throttle": "^4.1.1",
     "playwright": "^1.65.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
-    "vitest": "^5.1.0",
-    "ws": "^8.22.1"
+    "vitest": "^5.1.0"
   }
 }

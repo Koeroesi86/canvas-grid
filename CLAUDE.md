@@ -19,8 +19,7 @@ Read the relevant doc instead of guessing; update it when behaviour changes.
 - `components/`: the grid. Entry is `web-component.ts`; `types.ts` holds public types; renderers live in `cell-background/`, `cell-value/`, `header/`; shared helpers in `utils/`
 - `benchmarks/`: data store (vitest bench) and Playwright scroll benchmarks
 - `scripts/`: release and benchmark-comparison scripts (TypeScript run by Node type stripping, tests are `*.test.mts`)
-- `server/`: example websocket data source for `npm run dev`
-- `site/`: static GitHub Pages demo, no build step
+- `site/`: static GitHub Pages demo, no build step; its worker feed (`data-worker.js`) and `grid-setup.js` are also used by `npm run dev` (`index.html`, `components/example.ts`)
 - `build/`: generated, do not edit
 
 ## Commands

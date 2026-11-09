@@ -1,43 +1,74 @@
 import './web-component';
+import { configureGrid, formatNumber, parseSort, withColumnOptions } from '../site/grid-setup.js';
 import type { RowInput } from './types';
 
-interface ServerMessage {
-  columns: string[];
-  all: RowInput[];
-  row: RowInput;
-}
+/** What `site/data-worker.js` posts: the columns and rows once, then batches of ticks. */
+type FeedMessage =
+  | { type: 'init'; columns: Array<{ id: string; displayName?: string; width?: number }>; rows: RowInput[] }
+  | { type: 'ticks'; rows: RowInput[] };
+
+const byId = <Element extends HTMLElement>(id: string) => {
+  const element = document.getElementById(id);
+  if (!element) throw new Error(`#${id} not found`);
+  return element as Element;
+};
 
 const init = () => {
-  const canvasGrid = document.querySelector('canvas-grid');
-  if (!canvasGrid) throw new Error('canvas-grid element not found');
+  const grid = document.querySelector('canvas-grid');
+  if (!grid) throw new Error('canvas-grid element not found');
 
-  canvasGrid.font = '12px "Roboto", sans-serif';
-  canvasGrid.headerFont = '13px "Roboto", sans-serif';
+  // the same feed and options as the demo site (site/demo.js), but running on the sources in this checkout
+  const worker = new Worker(new URL('../site/data-worker.js', import.meta.url));
+  const rows = byId<HTMLSelectElement>('rows');
+  const rate = byId<HTMLSelectElement>('rate');
+  const sort = byId<HTMLSelectElement>('sort');
+  const pause = byId<HTMLButtonElement>('pause');
+  const status = byId('status');
+  let updates = 0;
 
-  const ws = new WebSocket(`ws://${window.location.host}/example`);
-  ws.addEventListener('message', e => {
-    try {
-      const data: Partial<ServerMessage> = JSON.parse(e.data);
-      if (data.columns && Array.isArray(data.columns)) {
-        canvasGrid.setColumns(data.columns);
-      }
-      if (data.all) {
-        canvasGrid.setValues(data.all);
-      }
-      if (data.row) {
-        canvasGrid.queueUpdate(data.row)
-      }
-    } catch (e) {
-      console.error(e)
+  const showStatus = (message: string) => {
+    status.textContent = message;
+    status.hidden = !message;
+  };
+  const applySort = () => grid.setSortModel(parseSort(sort.value));
+  const requestRows = () => {
+    showStatus('Generating rows in the worker…');
+    worker.postMessage({ type: 'start', rows: Number(rows.value) });
+  };
+
+  configureGrid(grid);
+
+  worker.addEventListener('message', ({ data }: MessageEvent<FeedMessage>) => {
+    if (data.type === 'init') {
+      grid.setColumns(withColumnOptions(data.columns));
+      grid.setValues(data.rows);
+      applySort();
+      byId('stat-rows').textContent = formatNumber(data.rows.length);
+      showStatus('');
+    }
+    if (data.type === 'ticks') {
+      updates += data.rows.length;
+      grid.transaction({ update: data.rows });
     }
   });
-  ws.addEventListener('close', () => {
-    console.log('Connection closed, reconnecting...');
-    setTimeout(init, 1000)
+  worker.addEventListener('error', () => showStatus('The data worker failed to start.'));
+
+  rows.addEventListener('change', requestRows);
+  sort.addEventListener('change', applySort);
+  rate.addEventListener('change', () => worker.postMessage({ type: 'rate', updatesPerSecond: Number(rate.value) }));
+  pause.addEventListener('click', () => {
+    const paused = pause.textContent === 'Pause feed';
+    pause.textContent = paused ? 'Resume feed' : 'Pause feed';
+    worker.postMessage({ type: 'pause', paused });
   });
-  ws.addEventListener('error', e => {
-    console.log('error', e);
-  });
+
+  setInterval(() => {
+    byId('stat-rate').textContent = `${formatNumber(updates)} / s`;
+    updates = 0;
+  }, 1000);
+
+  worker.postMessage({ type: 'rate', updatesPerSecond: Number(rate.value) });
+  requestRows();
 };
 
 window.addEventListener('load', init);
