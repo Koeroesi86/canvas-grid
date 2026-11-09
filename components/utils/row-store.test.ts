@@ -53,12 +53,12 @@ describe('RowStore', () => {
   });
 
   describe('removeMany', () => {
-    it('removes rows, renumbers the ones after them and returns the removed slots', () => {
+    it('removes rows, renumbers the positions after them and returns the removed slots', () => {
       expect(store.removeMany([3, 1])).toEqual([1, 3]);
       expect(store.keys).toEqual([0, 2, 4]);
       expect(store.get(2)?.index).toBe(1);
       expect(store.get(4)?.index).toBe(2);
-      expect([0, 2, 4].map(id => store.get(id)?.slot)).toEqual([0, 1, 2]);
+      expect([0, 2, 4].map(id => store.get(id)?.slot)).toEqual([0, 2, 4]);
       expect(store.topOf(2)).toBe(40);
       expect(store.totalHeight).toBe(60);
       expect(store.get(1)).toBeUndefined();
@@ -85,11 +85,38 @@ describe('RowStore', () => {
     expect(store.indexAt(25)).toBe(1);
   });
 
-  it('removes rows from a sorted store and keeps slots dense', () => {
+  it('removes rows from a sorted store without moving the slots of the others', () => {
     store.sort((a, b) => Number(b.id) - Number(a.id));
     expect(store.removeMany([2])).toEqual([2]);
     expect(store.keys).toEqual([4, 3, 1, 0]);
-    expect([4, 3, 1, 0].map(id => store.get(id)?.slot)).toEqual([3, 2, 1, 0]);
+    expect([4, 3, 1, 0].map(id => store.get(id)?.slot)).toEqual([4, 3, 1, 0]);
+  });
+
+  it('removes runs of rows anywhere in the order', () => {
+    const many = new RowStore();
+    Array.from({ length: 20 }, (_, id) => id).forEach(id => many.set(row(id)));
+    many.removeMany([0, 1, 5, 6, 7, 19, 12]);
+    expect(many.keys).toEqual([2, 3, 4, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18]);
+    many.keys.forEach((key, index) => {
+      expect(many.get(key)?.index).toBe(index);
+      expect(many.topOf(index)).toBe(index * 20);
+    });
+  });
+
+  it('gives new rows fresh slots after removals, and closes the holes once they outnumber the rows', () => {
+    const many = new RowStore();
+    Array.from({ length: 3000 }, (_, id) => id).forEach(id => many.set(row(id)));
+    many.removeMany(Array.from({ length: 1500 }, (_, id) => id));
+    expect(many.compactSlots()).toBeUndefined();
+    many.set(row('new'));
+    expect(many.get('new')?.slot).toBe(3000);
+
+    many.removeMany(Array.from({ length: 700 }, (_, id) => 1500 + id));
+    const kept = many.compactSlots();
+    expect(kept?.length).toBe(many.length);
+    expect(kept?.[0]).toBe(2200);
+    expect(many.slotCount).toBe(many.length);
+    expect(many.keys.map(key => many.get(key)?.slot)).toEqual(many.keys.map((_, index) => index));
   });
 
   it('clears everything', () => {

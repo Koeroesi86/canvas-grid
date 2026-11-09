@@ -30,25 +30,19 @@ class ColumnStore {
     this.updatedAt[slot] = updatedAt ?? 0;
   }
 
-  /** Drops the values of the given slots (ascending) and shifts the following ones down. */
-  removeSlots(slots: readonly number[]) {
-    if (slots.length === 0) return;
+  /** Empties the given slots, leaving holes; the other slots keep their place. */
+  clearSlots(slots: readonly number[]) {
+    slots.forEach(slot => {
+      if (slot < this.values.length) this.values[slot] = undefined;
+      if (this.updatedAt && slot < this.updatedAt.length) this.updatedAt[slot] = 0;
+    });
+  }
 
-    const compact = <T>(items: T[]) => {
-      let write = 0;
-      let removed = 0;
-      for (let read = 0; read < items.length; read++) {
-        if (removed < slots.length && slots[removed] === read) {
-          removed++;
-          continue;
-        }
-        items[write++] = items[read];
-      }
-      items.length = write;
-    };
-
-    compact(this.values);
-    if (this.updatedAt) compact(this.updatedAt);
+  /** Keeps only the given slots (ascending), renumbering them 0, 1, 2... in that order. */
+  compact(slots: ArrayLike<number>) {
+    this.values = Array.from(slots, slot => this.values[slot]);
+    const { updatedAt } = this;
+    if (updatedAt) this.updatedAt = Array.from(slots, slot => updatedAt[slot] ?? 0);
   }
 }
 

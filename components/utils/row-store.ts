@@ -2,11 +2,15 @@ import type { Key, RowData, RowId } from '../types';
 
 export type Row = RowData;
 
+/** Holes below this are not worth a pass over every column. */
+const MIN_HOLES_TO_COMPACT = 1024;
+
 /**
  * Rows in display order: a dense array with an id lookup and each row's top offset,
  * so appends, lookups and finding the row at a scroll offset never scan every row.
- * Removing rows renumbers the rows after the first removed one (once per call).
- * Rows keep a `slot` into the column stores that does not change when the rows are sorted.
+ * Removing rows renumbers the positions after the first removed one (once per call).
+ * Rows keep a `slot` into the column stores that does not change when the rows are sorted or others removed;
+ * removed rows leave holes, which are closed when they outnumber the rows.
  */
 class RowStore {
   private items: Row[] = [];
@@ -18,6 +22,9 @@ class RowStore {
 
   private end = 0;
 
+  /** Slots handed out so far, including holes left by removed rows. */
+  private nextSlot = 0;
+
   get length() {
     return this.items.length;
   }
@@ -25,6 +32,11 @@ class RowStore {
   /** Sum of all row heights. */
   get totalHeight() {
     return this.end;
+  }
+
+  /** Number of slots in use or left as holes; the length the column stores need. */
+  get slotCount() {
+    return this.nextSlot;
   }
 
   get keys(): RowId[] {
@@ -70,7 +82,7 @@ class RowStore {
     }
 
     const index = this.items.length;
-    const added = { ...row, index, slot: index };
+    const added = { ...row, index, slot: this.nextSlot++ };
     this.items.push(added);
     this.byId.set(String(row.id), added);
     this.tops.push(this.end);
@@ -79,7 +91,8 @@ class RowStore {
 
   /**
    * Removes the rows with the given ids, ignoring unknown ones.
-   * Returns the slots of the removed rows in ascending order, which the column stores must drop too.
+   * Returns the slots of the removed rows in ascending order, which the column stores must clear.
+   * Other rows keep their slots, so removing costs nothing per column; see `compactSlots`.
    */
   removeMany(ids: Key[]): number[] {
     const removed = new Set<Row>();
@@ -89,23 +102,37 @@ class RowStore {
     });
     if (removed.size === 0) return [];
 
-    const slots = Array.from(removed, row => row.slot).sort((a, b) => a - b);
-    const first = Array.from(removed).reduce((lowest, row) => Math.min(lowest, row.index), Infinity);
     removed.forEach(row => this.byId.delete(String(row.id)));
-    this.items = this.items.filter(row => !removed.has(row));
+    const indexes = Array.from(removed, row => row.index).sort((a, b) => a - b);
 
-    // slots stay dense: every row moves down by the number of removed slots below it
-    const shiftAt = new Int32Array(this.items.length + slots.length);
-    for (let slot = 0, next = 0; slot < shiftAt.length; slot++) {
-      if (slots[next] === slot) next++;
-      shiftAt[slot] = next;
-    }
-    this.items.forEach(row => {
-      row.slot -= shiftAt[row.slot];
+    // close the gaps in place, moving whole runs of surviving rows at once
+    let write = indexes[0];
+    indexes.forEach((removedIndex, at) => {
+      const end = indexes[at + 1] ?? this.items.length;
+      this.items.copyWithin(write, removedIndex + 1, end);
+      write += end - removedIndex - 1;
     });
+    this.items.length = write;
 
-    this.reindexFrom(first);
-    return slots;
+    this.reindexFrom(indexes[0]);
+    return Array.from(removed, row => row.slot).sort((a, b) => a - b);
+  }
+
+  /**
+   * Renumbers the slots densely once more than half of them are holes left by removed rows.
+   * Returns the previous slots of the remaining rows in ascending order (the column stores keep exactly those),
+   * or undefined when nothing was renumbered. Doing this rarely keeps removal cheap for streams that drop old rows.
+   */
+  compactSlots(): Int32Array | undefined {
+    const holes = this.nextSlot - this.items.length;
+    if (holes < MIN_HOLES_TO_COMPACT || holes <= this.items.length) return undefined;
+
+    const live = Int32Array.from(this.items, row => row.slot).sort();
+    const renumbered = new Int32Array(this.nextSlot);
+    live.forEach((slot, rank) => { renumbered[slot] = rank; });
+    this.items.forEach(row => { row.slot = renumbered[row.slot]; });
+    this.nextSlot = this.items.length;
+    return live;
   }
 
   /** Reorders the rows; the sort is stable, so equal rows keep their relative order. */
@@ -149,6 +176,7 @@ class RowStore {
     this.byId.clear();
     this.tops = [];
     this.end = 0;
+    this.nextSlot = 0;
   }
 
   /** Index of the first row in `rows` that is not ordered before `row`. */
