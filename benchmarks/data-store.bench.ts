@@ -113,8 +113,13 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
     wideSortStore.setSortModel([{ columnId: 'c0', direction: toggledDirection() }]);
   };
   /** Back to insertion order first, so every run sorts scrambled data rather than reversing a sorted list. */
-  const sortFromScratch = (columnId: string) => {
+  const sortFromScratch = (columnId: string, cold = false) => {
     tick += 1;
+    // a changed value means the sort keys of the column cannot be reused from the previous sort
+    if (cold) {
+      sortStore.queueUpdate({ id: 0, [columnId]: columnId === 'name' ? `item ${tick}` : tick });
+      sortStore.flush();
+    }
     sortStore.setSortModel([]);
     sortStore.setSortModel([{ columnId, direction: toggledDirection() }]);
   };
@@ -139,6 +144,9 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
     measure(`${EMPTY_FLUSHES} empty flushes`, () => repeat(EMPTY_FLUSHES, () => store.flush()), { ...heavy, operations: EMPTY_FLUSHES }),
 
     measure('sort scrambled number column (incl. reset)', () => sortFromScratch('price'), { ...heavy, operations: count }),
+    // the same column again: its sort keys are reused, as when a user flips the direction
+    measure('sort scrambled number column, values changed (cold)', () => sortFromScratch('price', true), { ...heavy, operations: count }),
+    measure('sort scrambled text column, values changed (cold)', () => sortFromScratch('name', true), { ...heavy, operations: count }),
     measure(`wide (${WIDE_COLUMNS} columns): sort number column (incl. reset)`, sortWideFromScratch, { ...heavy, operations: count }),
     measure('sort scrambled text column (incl. reset)', () => sortFromScratch('name'), { ...heavy, operations: count }),
     measure(`update ${BATCH} cells of the sort column`, () => {

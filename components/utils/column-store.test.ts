@@ -39,4 +39,19 @@ describe('ColumnStore', () => {
     expect(column.getUpdatedAt(1)).toBe(700);
     expect(column.getUpdatedAt(0)).toBeUndefined();
   });
+
+  it('changes its version whenever the values change', () => {
+    const column = new ColumnStore();
+    const seen = new Set<number>([column.version]);
+    column.set(0, 'a');
+    seen.add(column.version);
+    column.set(1, 'b');
+    seen.add(column.version);
+    column.clearSlots([0]);
+    seen.add(column.version);
+    column.compact([1]);
+    seen.add(column.version);
+    expect(seen.size).toBe(5);
+    expect(column.get(0)).toBe('b');
+  });
 });

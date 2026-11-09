@@ -370,4 +370,46 @@ describe('DataStore', () => {
       expect(store.columns.get('a')).toBeUndefined();
     });
   });
+
+  describe('reusing sort keys', () => {
+    it('sorts correctly after the direction flips, and after values changed in between', () => {
+      const rows: RowInput[] = ['b', 'c', 'a', 'd'].map((name, id) => ({ id, name }));
+      store.setRows(rows);
+      store.setSortModel([{ columnId: 'name' }]);
+      expect(store.rows.keys).toEqual([2, 0, 1, 3]);
+
+      store.setSortModel([{ columnId: 'name', direction: 'desc' }]);
+      expect(store.rows.keys).toEqual([3, 1, 0, 2]);
+
+      // a changed value must not be sorted by its old key
+      store.queueUpdate({ id: 2, name: 'z' });
+      store.flush();
+      store.setSortModel([{ columnId: 'name' }]);
+      expect(store.rows.keys).toEqual([0, 1, 3, 2]);
+      store.setSortModel([]);
+      store.setSortModel([{ columnId: 'name', direction: 'desc' }]);
+      expect(store.rows.keys).toEqual([2, 3, 1, 0]);
+    });
+
+    it('drops cached keys when rows are removed and others take their slots', () => {
+      store.setRows(Array.from({ length: 2500 }, (_, id) => ({ id, name: `n${String(id).padStart(5, '0')}` })));
+      store.setSortModel([{ columnId: 'name', direction: 'desc' }]);
+      Array.from({ length: 2000 }, (_, id) => store.queueRemove({ id }));
+      store.flush();
+      store.setSortModel([{ columnId: 'name' }]);
+      expect(store.rows.keys.slice(0, 3)).toEqual([2000, 2001, 2002]);
+      expect(store.rows.length).toBe(500);
+    });
+
+    it('treats texts the collator sees as equal as ties, ordered by the next key', () => {
+      // the same letter written as one code point and as a letter plus a combining accent
+      store.setRows([
+        { id: 'composed', name: '\u00e9', rank: 2 },
+        { id: 'decomposed', name: 'e\u0301', rank: 1 },
+        { id: 'plain', name: 'e', rank: 0 },
+      ]);
+      store.setSortModel([{ columnId: 'name' }, { columnId: 'rank' }]);
+      expect(store.rows.keys).toEqual(['plain', 'decomposed', 'composed']);
+    });
+  });
 });
