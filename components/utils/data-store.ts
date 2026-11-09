@@ -1,6 +1,7 @@
 import ColumnStore from './column-store';
 import RowStore from './row-store';
 import { getNow } from './selectors';
+import type { Row } from './row-store';
 import type { Key, RowId, RowInput, SortKey } from '../types';
 
 export type RowIdGetter = (row: RowInput, index?: number) => RowId;
@@ -16,6 +17,9 @@ interface PendingChange {
 }
 
 const collator = new Intl.Collator();
+
+/** Fewer changed rows than this fraction of all rows are moved one by one; more are cheaper to sort together. */
+const INCREMENTAL_SORT_RATIO = 8;
 
 const typeRank = (value: unknown) => {
   if (value === undefined || value === null) return 3;
@@ -33,6 +37,33 @@ export const compareValues = (a: unknown, b: unknown) => {
 };
 
 /**
+ * Sort keys for the default ordering of a column, computed once so comparing two rows is two array reads:
+ * a type rank, and within it a number (the value, or the position of its text among all the column's texts).
+ */
+const createDefaultKey = (values: readonly unknown[]) => {
+  const ranks = new Uint8Array(values.length);
+  const keys = new Float64Array(values.length);
+  const texts = new Map<string, number>();
+  values.forEach((value, slot) => {
+    ranks[slot] = typeRank(value);
+    if (ranks[slot] === 0) keys[slot] = Number(value);
+    if (ranks[slot] === 1 || ranks[slot] === 2) texts.set(String(value), 0);
+  });
+
+  // equal texts (as the collator sees them) share a position, so they tie and fall through to the next key
+  let position = 0;
+  const sorted = Array.from(texts.keys()).sort(collator.compare);
+  sorted.forEach((text, index) => {
+    if (index > 0 && collator.compare(sorted[index - 1], text) !== 0) position++;
+    texts.set(text, position);
+  });
+  values.forEach((value, slot) => {
+    if (ranks[slot] === 1 || ranks[slot] === 2) keys[slot] = texts.get(String(value)) ?? 0;
+  });
+  return { ranks, keys };
+};
+
+/**
  * Cell values stored by column (one array per column, addressed by the row's slot) plus the row order,
  * with the queued add/update/remove handling and the sort model. Independent of the DOM.
  */
@@ -44,6 +75,8 @@ class DataStore {
   private pending: PendingChange[] = [];
   private sortModel: readonly SortKey[] = [];
   private sortDirty = false;
+  /** Ids of the rows changed since the last sort; only those have to move when few changed. */
+  private sortChanged = new Set<string>();
 
   private environment: DataStoreEnvironment;
 
@@ -93,6 +126,7 @@ class DataStore {
   setRows(data: RowInput[]) {
     this.pending = [];
     this.clear();
+    this.sortChanged.clear();
     data.forEach((row, index) => this.addRow(this.environment.getRowId(row, index), row, undefined));
     this.sort();
   }
@@ -122,7 +156,7 @@ class DataStore {
     applyRemovals();
 
     if (!this.sortDirty) return moved;
-    this.sort();
+    this.sortChanges();
     return true;
   }
 
@@ -139,7 +173,7 @@ class DataStore {
     this.rows.set({ id, height: this.environment.getCellHeight() });
     const slot = this.rows.get(id)?.slot ?? 0;
     Object.keys(row).forEach(key => this.column(key).set(slot, row[key], updatedAt));
-    this.markSortDirty(Object.keys(row));
+    this.markSortDirty(id, Object.keys(row));
   }
 
   private removeRows(ids: Key[]) {
@@ -157,37 +191,66 @@ class DataStore {
       this.addRow(rowId, row, now);
       return;
     }
-    Object.keys(row).forEach(key => this.applyValue(rowData.slot, key, row[key], now));
+    Object.keys(row).forEach(key => this.applyValue(rowData.id, rowData.slot, key, row[key], now));
   }
 
-  private applyValue(slot: number, key: string, value: unknown, now: number) {
+  private applyValue(rowId: RowId, slot: number, key: string, value: unknown, now: number) {
     const column = this.column(key);
     const previous = column.get(slot);
     if (previous === value) return;
     // a value appearing in a column the row did not have yet is not an update worth flashing
     column.set(slot, value, previous === undefined ? undefined : now);
-    this.markSortDirty([key]);
+    this.markSortDirty(rowId, [key]);
   }
 
-  private markSortDirty(keys: string[]) {
-    if (this.sortModel.some(({ columnId }) => keys.includes(String(columnId)))) this.sortDirty = true;
+  private markSortDirty(rowId: RowId, keys: string[]) {
+    if (!this.sortModel.some(({ columnId }) => keys.includes(String(columnId)))) return;
+    this.sortDirty = true;
+    this.sortChanged.add(String(rowId));
+  }
+
+  /** Orders two rows by the sort model, ties by slot so the order is total. */
+  private createComparator(precompute: boolean) {
+    const keys = this.sortModel.map(({ columnId, direction = 'asc', compare }) => {
+      const values = this.columns.get(String(columnId))?.values;
+      const sign = direction === 'desc' ? -1 : 1;
+      if (!values) return { order: () => 0, sign };
+      if (compare) return { order: (a: Row, b: Row) => compare(values[a.slot], values[b.slot]), sign };
+      if (!precompute) return { order: (a: Row, b: Row) => compareValues(values[a.slot], values[b.slot]), sign };
+
+      const { ranks, keys: sortKeys } = createDefaultKey(values);
+      return {
+        order: (a: Row, b: Row) => ranks[a.slot] - ranks[b.slot] || (ranks[a.slot] === 3 ? 0 : sortKeys[a.slot] - sortKeys[b.slot]) || 0,
+        sign,
+      };
+    });
+
+    return (a: Row, b: Row) => {
+      for (const { order, sign } of keys) {
+        const result = order(a, b);
+        if (result !== 0) return result * sign;
+      }
+      return a.slot - b.slot;
+    };
   }
 
   private sort() {
     this.sortDirty = false;
-    const keys = this.sortModel.map(({ columnId, direction = 'asc', compare = compareValues }) => ({
-      values: this.columns.get(String(columnId))?.values,
-      compare,
-      sign: direction === 'desc' ? -1 : 1,
-    }));
+    this.sortChanged.clear();
+    this.rows.sort(this.createComparator(true));
+  }
 
-    this.rows.sort((a, b) => {
-      for (const { values, compare, sign } of keys) {
-        const order = values ? compare(values[a.slot], values[b.slot]) : 0;
-        if (order !== 0) return order * sign;
-      }
-      return a.slot - b.slot;
-    });
+  /** Re-sorts after a flush: moves only the changed rows when they are few, otherwise sorts everything. */
+  private sortChanges() {
+    const changed = this.sortChanged;
+    if (changed.size * INCREMENTAL_SORT_RATIO >= this.rows.length) {
+      this.sort();
+      return;
+    }
+
+    this.sortDirty = false;
+    this.sortChanged = new Set();
+    this.rows.resort(changed, this.createComparator(false));
   }
 }
 
