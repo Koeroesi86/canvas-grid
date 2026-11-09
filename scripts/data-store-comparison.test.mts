@@ -9,16 +9,33 @@ const run = (update: number, setRows = 20): DataStoreResult[] => [
   { name: 'hot cells', rows: 20000, medianMs: update, gating: false },
 ];
 
-const find = (name: string, comparisons: ReturnType<typeof compareDataStore>) => {
-  const found = comparisons.find(comparison => comparison.name === name);
+const find = (name: string, comparisons: ReturnType<typeof compareDataStore>, rows = 20000) => {
+  const found = comparisons.find(comparison => comparison.name === name && comparison.rows === rows);
   assert.ok(found, `missing ${name}`);
   return found;
 };
 
 describe('compareDataStore', () => {
-  it('compares only the largest row count', () => {
+  it('compares every row count, smallest first', () => {
     const comparisons = compareDataStore([run(2)], [run(2)], 0.3);
-    assert.deepEqual(comparisons.map(comparison => comparison.rows), [20000, 20000, 20000]);
+    assert.deepEqual(comparisons.map(comparison => comparison.rows), [1000, 20000, 20000, 20000]);
+  });
+
+  it('fails a regression that only shows at the larger size', () => {
+    const sizes = (small: number, large: number): DataStoreResult[] => [
+      { name: 'remove', rows: 20000, medianMs: small, gating: true },
+      { name: 'remove', rows: 100000, medianMs: large, gating: true },
+    ];
+    const comparisons = compareDataStore([sizes(1.7, 2)], [sizes(1.8, 6)], 0.3);
+    assert.equal(find('remove', comparisons, 20000).failed, false);
+    assert.equal(find('remove', comparisons, 100000).failed, true);
+  });
+
+  it('reports memory in bytes per row and never fails on it', () => {
+    const heap = (bytes: number): DataStoreResult[] => [{ name: 'heap after setRows', rows: 20000, medianMs: bytes, gating: false, unit: 'bytes/row' }];
+    const comparisons = compareDataStore([heap(200)], [heap(400)], 0.3);
+    assert.equal(comparisons[0].failed, false);
+    assert.match(formatDataStoreMarkdown(comparisons, 0.3, 1), /\| 20,000 \| heap after setRows \| 200 \(200–200\) \| 400 \(400–400\) \| \+100\.0% \| info \|/);
   });
 
   it('fails past the threshold when the slowdown is above the noise floor', () => {
