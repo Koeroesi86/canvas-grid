@@ -114,7 +114,7 @@ describe('DataStore', () => {
       expect(store.rows.keys).toEqual([1, 4]);
       expect(store.getValue(1, 'v')).toBe('a');
       expect(store.getValue(4, 'v')).toBe('d');
-      expect(store.rows.get(4)).toMatchObject({ index: 1, slot: 1 });
+      expect(store.rows.get(4)).toMatchObject({ index: 1, slot: 3 });
     });
 
     it('keeps update times with their rows when rows are removed', () => {
@@ -315,6 +315,34 @@ describe('DataStore', () => {
       ]);
       store.setSortModel([{ columnId: 'value' }]);
       expect(store.rows.keys).toEqual(['two', 'ten', 'a', 'A', 'b', 'flag', 'empty']);
+    });
+  });
+
+  describe('removal at scale', () => {
+    it('keeps every remaining value on the right row while slots are compacted', () => {
+      const total = 6000;
+      store.setRows(Array.from({ length: total }, (_, id) => ({ id, a: id * 2, b: `b${id}` })));
+      store.setSortModel([{ columnId: 'a', direction: 'desc' }]);
+      store.queueUpdate({ id: 5999, a: -1 });
+      store.flush();
+
+      // drop the oldest rows in batches, adding new ones, across several compactions
+      for (let batch = 0; batch < 6; batch++) {
+        const first = batch * 900;
+        Array.from({ length: 900 }, (_, offset) => store.queueRemove({ id: first + offset }));
+        Array.from({ length: 100 }, (_, offset) => store.queueUpdate({ id: total + batch * 100 + offset, a: 1, b: 'new' }));
+        store.flush();
+      }
+
+      const survivors = store.rows.keys;
+      expect(survivors.length).toBe(total - 5400 + 600);
+      survivors.forEach(id => {
+        const numeric = Number(id);
+        expect(store.getValue(id, 'a')).toBe(numeric >= total ? 1 : numeric === 5999 ? -1 : numeric * 2);
+        expect(store.getValue(id, 'b')).toBe(numeric >= total ? 'new' : `b${numeric}`);
+      });
+      const sorted = survivors.map(id => Number(store.getValue(id, 'a')));
+      expect(sorted).toEqual(sorted.slice().sort((x, y) => y - x));
     });
   });
 });

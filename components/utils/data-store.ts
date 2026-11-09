@@ -163,7 +163,7 @@ class DataStore {
   private column(key: string) {
     let column = this.columns.get(key);
     if (!column) {
-      column = new ColumnStore(this.rows.length);
+      column = new ColumnStore(this.rows.slotCount);
       this.columns.set(key, column);
     }
     return column;
@@ -180,7 +180,9 @@ class DataStore {
     if (ids.length === 0) return false;
 
     const slots = this.rows.removeMany(ids);
-    this.columns.forEach(column => column.removeSlots(slots));
+    this.columns.forEach(column => column.clearSlots(slots));
+    const kept = this.rows.compactSlots();
+    if (kept) this.columns.forEach(column => column.compact(kept));
     return slots.length > 0;
   }
 
