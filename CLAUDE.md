@@ -29,6 +29,14 @@ Read the relevant doc instead of guessing; update it when behaviour changes.
 - `npm run bench` / `npm run bench:scroll`: performance checks
 - Node 22.18+ required
 
+## Working efficiently
+
+- Node comes from `.nvmrc` (24, as in CI); the SessionStart hook in `.claude/hooks/node-env.sh` puts it on PATH, so don't prefix commands with nvm or `export PATH`. If `node` is still missing, use `$HOME/.nvm/versions/node/v24*/bin`.
+- Edit `package.json` with `npm pkg set` / `npm pkg delete`, not ad-hoc scripts.
+- Compare a change against `master` with `node scripts/compare-benchmarks.mts <base-checkout>` (scroll) or `node scripts/compare-data-store.mts <base-checkout>` (data store); see [docs/development.md](docs/development.md). Playwright needs `npx playwright install chromium` once.
+- Wait for CI with `gh pr checks --watch`, not sleep loops. Keep screenshots and scratch files in the scratchpad, not the repo, and keep command output short (`| tail`).
+- Use one session per PR or issue; long sessions get compacted and cost more.
+
 ## Conventions
 
 - Performance is the product. Draw only the visible range, avoid per-cell allocations on the draw path (`CellContext` is one reused object), draw on request rather than polling, and keep the data store O(1) per update. Run the benchmarks for changes on these paths; CI fails PRs that regress scroll draw time or stalls (scroll benchmark) or data-store timings by more than 30% (data-store benchmark).
