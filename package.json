@@ -26,7 +26,8 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && node --test scripts/*.test.mts && vitest run",
     "bench": "vitest run --config vitest.bench.config.mts",
-    "bench:scroll": "node benchmarks/scroll.bench.mts"
+    "bench:scroll": "node benchmarks/scroll.bench.mts",
+    "spike:offscreen": "node spikes/offscreen-worker/run.mts"
   },
   "keywords": [],
   "author": {
