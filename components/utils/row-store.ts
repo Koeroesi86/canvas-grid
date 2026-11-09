@@ -70,23 +70,25 @@ class RowStore {
     return low;
   }
 
-  /** Appends the row, or replaces the row with the same id in place. */
-  set(row: Omit<Row, 'index' | 'slot'>) {
-    const previous = this.byId.get(String(row.id));
+  /** Appends the row, or replaces the row with the same id in place; returns the stored row. */
+  set(row: Omit<Row, 'index' | 'slot'>): Row {
+    const key = String(row.id);
+    const previous = this.byId.get(key);
     if (previous) {
-      const replacement = { ...row, index: previous.index, slot: previous.slot };
+      const replacement = { id: row.id, height: row.height, index: previous.index, slot: previous.slot };
       this.items[previous.index] = replacement;
-      this.byId.set(String(row.id), replacement);
+      this.byId.set(key, replacement);
       this.reindexFrom(previous.index);
-      return;
+      return replacement;
     }
 
     const index = this.items.length;
-    const added = { ...row, index, slot: this.nextSlot++ };
+    const added = { id: row.id, height: row.height, index, slot: this.nextSlot++ };
     this.items.push(added);
-    this.byId.set(String(row.id), added);
+    this.byId.set(key, added);
     this.tops.push(this.end);
     this.end += Math.round(row.height);
+    return added;
   }
 
   /**

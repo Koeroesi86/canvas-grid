@@ -127,8 +127,11 @@ class DataStore {
     this.pending = [];
     this.clear();
     this.sortChanged.clear();
+    // size the columns of the first row up front instead of growing them one value at a time
+    Object.keys(data[0] ?? {}).forEach(key => this.columns.set(key, new ColumnStore(data.length)));
     data.forEach((row, index) => this.addRow(this.environment.getRowId(row, index), row, undefined));
-    this.sort();
+    // rows were added in insertion order, which is the order without a sort model
+    if (this.sortModel.length > 0) this.sort();
   }
 
   /**
@@ -170,10 +173,10 @@ class DataStore {
   }
 
   private addRow(id: RowId, row: RowInput, updatedAt: number | undefined) {
-    this.rows.set({ id, height: this.environment.getCellHeight() });
-    const slot = this.rows.get(id)?.slot ?? 0;
-    Object.keys(row).forEach(key => this.column(key).set(slot, row[key], updatedAt));
-    this.markSortDirty(id, Object.keys(row));
+    const { slot } = this.rows.set({ id, height: this.environment.getCellHeight() });
+    const keys = Object.keys(row);
+    for (const key of keys) this.column(key).set(slot, row[key], updatedAt);
+    this.markSortDirty(id, keys);
   }
 
   private removeRows(ids: Key[]) {
