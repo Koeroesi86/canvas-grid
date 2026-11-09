@@ -262,10 +262,10 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   /** Adds a canvas on top of the existing layers, or below the layer named in `before`. */
-  addLayer(name: string, { alpha = true, before }: LayerOptions = {}) {
+  addLayer(name: string, { alpha = true, desynchronized = false, before }: LayerOptions = {}) {
     if (this.getLayer(name)) throw new Error(`canvas-grid: layer "${name}" already exists`);
 
-    const layer = new Layer(name, { alpha });
+    const layer = new Layer(name, { alpha, desynchronized });
     const next = before === undefined ? undefined : this.requireLayer(before);
     this.layers.splice(next ? this.layers.indexOf(next) : this.layers.length, 0, layer);
     this.layersByName.set(name, layer);
