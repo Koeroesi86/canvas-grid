@@ -32,7 +32,7 @@ Read the relevant doc instead of guessing; update it when behaviour changes.
 
 ## Conventions
 
-- Performance is the product. Draw only the visible range, avoid per-cell allocations on the draw path (`CellContext` is one reused object), draw on request rather than polling, and keep the data store O(1) per update. Run the benchmarks for changes on these paths; CI fails PRs that regress scroll FPS or p95 frame time by more than 30%.
+- Performance is the product. Draw only the visible range, avoid per-cell allocations on the draw path (`CellContext` is one reused object), draw on request rather than polling, and keep the data store O(1) per update. Run the benchmarks for changes on these paths; CI fails PRs that regress scroll draw time or stalls (scroll benchmark) or data-store timings by more than 30% (data-store benchmark).
 - Values are stored by column and formatted lazily; sorting works on raw values, not formatted ones.
 - The public API is documented in `docs/`; keep types in `components/types.ts` and docs in sync.
 - Add unit tests for data-store and script changes.
