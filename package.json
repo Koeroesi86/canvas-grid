@@ -27,7 +27,8 @@
     "test": "npm run typecheck && node --test scripts/*.test.mts && vitest run",
     "bench": "vitest run --config vitest.bench.config.mts",
     "bench:scroll": "node benchmarks/scroll.bench.mts",
-    "spike:offscreen": "node spikes/offscreen-worker/run.mts"
+    "spike:offscreen": "node spikes/offscreen-worker/run.mts",
+    "spike:data-worker": "node spikes/data-worker/run.mts"
   },
   "keywords": [],
   "author": {
