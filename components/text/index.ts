@@ -1,6 +1,7 @@
 import Renderer from '../utils/renderer';
 import { primitive } from '../utils/jsx';
-import CharacterRenderer from '../character';
+import fitText from '../utils/fit-text';
+import { getContext2d } from '../utils/canvas';
 import type { RenderProps } from '../types';
 
 export interface TextOptions {
@@ -30,21 +31,19 @@ class TextRenderer extends Renderer<TextOptions> {
     isEllipsisRight: true,
   };
 
-  private readonly characterRenderer: CharacterRenderer;
+  private readonly characterWidths = new Map<string, number>();
+
+  private readonly measureContext = getContext2d(document.createElement('canvas'));
+
+  private measuredFont = '';
 
   constructor(options: Partial<TextOptions> = {}) {
     super({ ...TextRenderer.defaultOptions, ...options });
-
-    this.characterRenderer = new CharacterRenderer({
-      font: this.options.font,
-      color: this.options.color,
-    });
   }
 
   set font(font: string) {
     if (this.options.font !== font) {
       this.options.font = font;
-      this.characterRenderer.font = font;
       this.clearCache();
     }
   }
@@ -55,58 +54,56 @@ class TextRenderer extends Renderer<TextOptions> {
 
   set color(color: string) {
     this.options.color = color;
-    this.characterRenderer.color = color;
   }
 
   get color() {
     return this.options.color;
   }
 
-  set pixelRatio(pixelRatio: number) {
-    this.characterRenderer.pixelRatio = pixelRatio;
-  }
-
-  get pixelRatio() {
-    return this.characterRenderer.pixelRatio;
-  }
+  /** Text is drawn straight into the layer, whose transform already scales it to the device pixel ratio. */
+  pixelRatio = 1;
 
   clearCache() {
-    this.characterRenderer.clearCache();
+    this.characterWidths.clear();
+    this.measuredFont = '';
+  }
+
+  /** Width of one character in the current font, measured once. */
+  private measureCharacter(character: string) {
+    const cached = this.characterWidths.get(character);
+    if (cached !== undefined) return cached;
+
+    if (this.measuredFont !== this.options.font) {
+      this.measureContext.font = this.options.font;
+      this.measuredFont = this.options.font;
+    }
+    const width = this.measureContext.measureText(character).width;
+    this.characterWidths.set(character, width);
+    return width;
   }
 
   getTextWidth(text: string) {
     let totalWidth = 0;
-    for (let i = 0; i < text.length; i++) {
-      const character = text.charAt(i);
-      totalWidth += this.characterRenderer.getCharacterWidth(character);
-    }
+    for (let i = 0; i < text.length; i++) totalWidth += this.measureCharacter(text.charAt(i));
     return totalWidth;
   }
 
-  /** Draws the text clipped with an ellipsis; `(x, y)` is the offset of the text box from `(originX, originY)`. */
+  /**
+   * Draws the text clipped with an ellipsis; `(x, y)` is the offset of the text box from `(originX, originY)`.
+   * The whole string is drawn with one `fillText`: recording one command per cell is much cheaper than
+   * one `drawImage` per character, and the browser keeps its own glyph cache.
+   */
   paint(ctx: CanvasRenderingContext2D, { value = '', x = 0, y = 0, width = 0, height = 0 }: RenderProps, originX: number, originY: number) {
-    const ellipsisWidth = this.characterRenderer.getCharacterWidth(this.options.ellipsis);
-    const verticalPadding = this.options.cellPadding.left + this.options.cellPadding.right;
-    const availableWidth = width - ellipsisWidth - verticalPadding;
-    const left = originX + x;
-    const top = originY + y + this.options.cellPadding.top;
-    const maxHeight = height - this.options.cellPadding.top - this.options.cellPadding.bottom;
-    let currentXOffset = this.options.cellPadding.left;
-    let currentWidth = 0;
+    const { cellPadding } = this.options;
+    const available = width - cellPadding.left - cellPadding.right;
+    const text = fitText(value, available, this.options.ellipsis, character => this.measureCharacter(character));
+    if (text === '' || height - cellPadding.top - cellPadding.bottom <= 0) return;
 
-    // break down to character for better caching; characters are drawn directly, no per-glyph elements
-    for (let i = 0; i < value.length; i++) {
-      const character = value.charAt(i);
-      const characterWidth = Math.round(this.characterRenderer.getCharacterWidth(character));
-
-      if (Math.ceil(currentWidth + characterWidth) >= availableWidth) {
-        this.characterRenderer.paint(ctx, { value: this.options.ellipsis, height: maxHeight }, left + currentXOffset, top);
-        break;
-      }
-      this.characterRenderer.paint(ctx, { value: character, height: maxHeight }, left + currentXOffset, top);
-      currentWidth += characterWidth;
-      currentXOffset += characterWidth;
-    }
+    ctx.font = this.options.font;
+    ctx.fillStyle = this.options.color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(text, originX + x + cellPadding.left, originY + y + cellPadding.top);
   }
 
   readonly element = primitive<RenderProps>((ctx, props, x, y) => this.paint(ctx, props, x, y));
