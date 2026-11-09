@@ -83,6 +83,15 @@ describe('stalled frames', () => {
   });
 });
 
+describe('minimum draw-time difference', () => {
+  it('ignores a large relative slowdown that is under the floor', () => {
+    const base = [result({ drawMeanMs: 1, drawP95Ms: 1.2 })];
+    assert.equal(find('Draw time mean (ms)', compareResults(base, [result({ drawMeanMs: 1.15, drawP95Ms: 1.3 })], 0.1, 2)).failed, false);
+    assert.equal(find('Draw time mean (ms)', compareResults(base, [result({ drawMeanMs: 1.3, drawP95Ms: 1.5 })], 0.1, 2)).failed, true);
+    assert.equal(find('Draw time mean (ms)', compareResults(base, [result({ drawMeanMs: 1.15 })], 0.1, 2, 0.1)).failed, true);
+  });
+});
+
 describe('formatMarkdown', () => {
   it('renders a row per metric and flags regressions', () => {
     const markdown = formatMarkdown(compareResults([result()], [result({ drawMeanMs: 10 })], 0.3), 0.3, 1);

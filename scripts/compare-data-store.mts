@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
   compareDataStore,
+  DEFAULT_HEAP_THRESHOLD,
   DEFAULT_MIN_DIFFERENCE_MS,
   formatDataStoreMarkdown,
   type DataStoreResult,
@@ -14,7 +15,8 @@ import {
  * between them so runner noise affects both, then compares medians at each row count.
  *
  * Usage: node scripts/compare-data-store.mts <base-checkout-directory>
- * Environment: BENCHMARK_RUNS (default 5), DATA_STORE_THRESHOLD (default 0.3 = 30%),
+ * Environment: BENCHMARK_RUNS (default 5), DATA_STORE_THRESHOLD (default 0.2 = 20%),
+ * DATA_STORE_HEAP_THRESHOLD (default 0.1 = 10%),
  * DATA_STORE_MIN_DIFFERENCE_MS (default 0.2), BENCH_ROWS (default 20000,100000).
  */
 const [baseArgument] = process.argv.slice(2);
@@ -23,7 +25,8 @@ if (!baseArgument) throw new Error('Usage: node scripts/compare-data-store.mts <
 const headRoot = resolve(import.meta.dirname, '..');
 const baseRoot = resolve(baseArgument);
 const runs = Number(process.env.BENCHMARK_RUNS ?? 5);
-const threshold = Number(process.env.DATA_STORE_THRESHOLD ?? 0.3);
+const threshold = Number(process.env.DATA_STORE_THRESHOLD ?? 0.2);
+const heapThreshold = Number(process.env.DATA_STORE_HEAP_THRESHOLD ?? DEFAULT_HEAP_THRESHOLD);
 const minDifferenceMs = Number(process.env.DATA_STORE_MIN_DIFFERENCE_MS ?? DEFAULT_MIN_DIFFERENCE_MS);
 const outputDirectory = mkdtempSync(join(tmpdir(), 'data-store-benchmark-'));
 
@@ -50,8 +53,8 @@ const results = Array.from({ length: runs }).reduce<{ base: DataStoreResult[][];
   return collected;
 }, { base: [], head: [] });
 
-const comparisons = compareDataStore(results.base, results.head, threshold, minDifferenceMs);
-const markdown = formatDataStoreMarkdown(comparisons, threshold, runs, minDifferenceMs);
+const comparisons = compareDataStore(results.base, results.head, threshold, minDifferenceMs, heapThreshold);
+const markdown = formatDataStoreMarkdown(comparisons, threshold, runs, minDifferenceMs, heapThreshold);
 console.log(markdown);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown);
 
