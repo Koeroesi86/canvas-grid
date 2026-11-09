@@ -107,15 +107,7 @@ class RowStore {
     removed.forEach(row => this.byId.delete(String(row.id)));
     const indexes = Array.from(removed, row => row.index).sort((a, b) => a - b);
 
-    // close the gaps in place, moving whole runs of surviving rows at once
-    let write = indexes[0];
-    indexes.forEach((removedIndex, at) => {
-      const end = indexes[at + 1] ?? this.items.length;
-      this.items.copyWithin(write, removedIndex + 1, end);
-      write += end - removedIndex - 1;
-    });
-    this.items.length = write;
-
+    this.closeGaps(indexes);
     this.reindexFrom(indexes[0]);
     return Array.from(removed, row => row.slot).sort((a, b) => a - b);
   }
@@ -156,21 +148,25 @@ class RowStore {
     }
     if (moving.size === 0) return;
 
-    const settled = this.items.filter(row => !moving.has(row));
+    const oldIndexes = Array.from(moving, row => row.index).sort((a, b) => a - b);
+    this.closeGaps(oldIndexes);
+
+    // only the moving rows are compared; the rest is moved around with memmoves, never visited one by one
     const inserts = Array.from(moving).sort(compare);
-    const positions = inserts.map(row => this.lowerBound(settled, row, compare));
+    const positions = inserts.map(row => this.lowerBound(this.items, row, compare));
+    const settledLength = this.items.length;
+    inserts.forEach(row => this.items.push(row));
 
-    const result: Row[] = [];
-    let copied = 0;
-    inserts.forEach((row, at) => {
-      for (; copied < positions[at]; copied++) result.push(settled[copied]);
-      result.push(row);
-    });
-    for (; copied < settled.length; copied++) result.push(settled[copied]);
+    // from the back, so every settled row moves once, past the inserts that end up before it
+    const { items } = this;
+    let end = settledLength;
+    for (let at = inserts.length - 1; at >= 0; at--) {
+      for (let from = end - 1; from >= positions[at]; from--) items[from + at + 1] = items[from];
+      items[positions[at] + at] = inserts[at];
+      end = positions[at];
+    }
 
-    const firstMoved = Math.min(positions[0], ...Array.from(moving, row => row.index));
-    this.items = result;
-    this.reindexFrom(firstMoved);
+    this.reindexFrom(Math.min(oldIndexes[0], positions[0]));
   }
 
   clear() {
@@ -179,6 +175,18 @@ class RowStore {
     this.tops = [];
     this.end = 0;
     this.nextSlot = 0;
+  }
+
+  /** Removes the items at the given ascending indexes in place, moving the others down in runs. */
+  private closeGaps(indexes: readonly number[]) {
+    const { items } = this;
+    let write = indexes[0];
+    indexes.forEach((removedIndex, at) => {
+      const end = indexes[at + 1] ?? items.length;
+      // a plain loop: Array.prototype.copyWithin is much slower than this on arrays of objects
+      for (let read = removedIndex + 1; read < end; read++) items[write++] = items[read];
+    });
+    items.length = write;
   }
 
   /** Index of the first row in `rows` that is not ordered before `row`. */
