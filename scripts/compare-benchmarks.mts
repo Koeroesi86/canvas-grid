@@ -25,7 +25,7 @@ const outputDirectory = mkdtempSync(join(tmpdir(), 'scroll-benchmark-'));
 // The harness always comes from head; only the components under test differ.
 cpSync(join(headRoot, 'benchmarks/scroll'), join(baseRoot, 'benchmarks/scroll'), { recursive: true });
 
-const runBenchmark = (name: string, root: string, run: number): ScrollResult => {
+const runBenchmark = (name: string, root: string, run: number): ScrollResult & { renderer?: string } => {
   const outputPath = join(outputDirectory, `${name}-${run}.json`);
   execFileSync(process.execPath, [join(headRoot, 'benchmarks/scroll.bench.mts')], {
     cwd: headRoot,
@@ -35,7 +35,7 @@ const runBenchmark = (name: string, root: string, run: number): ScrollResult => 
   return JSON.parse(readFileSync(outputPath, 'utf8'));
 };
 
-const results = Array.from({ length: runs }).reduce<{ base: ScrollResult[]; head: ScrollResult[] }>((collected, _, run) => {
+const results = Array.from({ length: runs }).reduce<{ base: (ScrollResult & { renderer?: string })[]; head: (ScrollResult & { renderer?: string })[] }>((collected, _, run) => {
   const first = run % 2 === 0 ? 'base' : 'head';
   const second = first === 'base' ? 'head' : 'base';
   const roots = { base: baseRoot, head: headRoot };
@@ -45,7 +45,7 @@ const results = Array.from({ length: runs }).reduce<{ base: ScrollResult[]; head
 }, { base: [], head: [] });
 
 const comparisons = compareResults(results.base, results.head, threshold, stallAllowance);
-const markdown = formatMarkdown(comparisons, threshold, runs, stallAllowance);
+const markdown = formatMarkdown(comparisons, threshold, runs, stallAllowance, results.head[0]?.renderer);
 console.log(markdown);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown);
 
