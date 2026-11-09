@@ -43,25 +43,43 @@ export const compareValues = (a: unknown, b: unknown) => {
 const createDefaultKey = (values: readonly unknown[]) => {
   const ranks = new Uint8Array(values.length);
   const keys = new Float64Array(values.length);
-  const texts = new Map<string, number>();
-  values.forEach((value, slot) => {
-    ranks[slot] = typeRank(value);
-    if (ranks[slot] === 0) keys[slot] = Number(value);
-    if (ranks[slot] === 1 || ranks[slot] === 2) texts.set(String(value), 0);
-  });
+  // every distinct text gets an id on the way, so ranks can be looked up by index instead of by text again
+  const textIds = new Int32Array(values.length);
+  const ids = new Map<string, number>();
+  for (let slot = 0; slot < values.length; slot++) {
+    const value = values[slot];
+    const rank = typeRank(value);
+    ranks[slot] = rank;
+    if (rank === 0) {
+      keys[slot] = Number(value);
+      continue;
+    }
+    if (rank !== 1 && rank !== 2) continue;
+
+    const text = String(value);
+    let id = ids.get(text);
+    if (id === undefined) {
+      id = ids.size;
+      ids.set(text, id);
+    }
+    textIds[slot] = id;
+  }
 
   // equal texts (as the collator sees them) share a position, so they tie and fall through to the next key
+  const positions = new Float64Array(ids.size);
+  const sorted = Array.from(ids.keys()).sort(collator.compare);
   let position = 0;
-  const sorted = Array.from(texts.keys()).sort(collator.compare);
   sorted.forEach((text, index) => {
     if (index > 0 && collator.compare(sorted[index - 1], text) !== 0) position++;
-    texts.set(text, position);
+    positions[ids.get(text) ?? 0] = position;
   });
-  values.forEach((value, slot) => {
-    if (ranks[slot] === 1 || ranks[slot] === 2) keys[slot] = texts.get(String(value)) ?? 0;
-  });
+  for (let slot = 0; slot < values.length; slot++) {
+    if (ranks[slot] === 1 || ranks[slot] === 2) keys[slot] = positions[textIds[slot]];
+  }
   return { ranks, keys };
 };
+
+type DefaultKey = ReturnType<typeof createDefaultKey>;
 
 /**
  * Cell values stored by column (one array per column, addressed by the row's slot) plus the row order,
@@ -77,6 +95,8 @@ class DataStore {
   private sortDirty = false;
   /** Ids of the rows changed since the last sort; only those have to move when few changed. */
   private sortChanged = new Set<string>();
+  /** Sort keys per column, reused until the column's values change (e.g. when only the direction flips). */
+  private defaultKeys = new WeakMap<ColumnStore, { version: number; key: DefaultKey }>();
 
   private environment: DataStoreEnvironment;
 
@@ -214,18 +234,40 @@ class DataStore {
     this.sortChanged.add(String(rowId));
   }
 
+  private defaultKeyOf(column: ColumnStore) {
+    const cached = this.defaultKeys.get(column);
+    if (cached && cached.version === column.version) return cached.key;
+
+    const key = createDefaultKey(column.values);
+    this.defaultKeys.set(column, { version: column.version, key });
+    return key;
+  }
+
   /** Orders two rows by the sort model, ties by slot so the order is total. */
   private createComparator(precompute: boolean) {
+    const [only, ...rest] = this.sortModel;
+    const onlyColumn = only && !only.compare && precompute && rest.length === 0 ? this.columns.get(String(only.columnId)) : undefined;
+    if (onlyColumn) {
+      // the common case, a single default-ordered column, without the per-key loop and calls
+      const { ranks, keys } = this.defaultKeyOf(onlyColumn);
+      const sign = only.direction === 'desc' ? -1 : 1;
+      return (a: Row, b: Row) => {
+        const order = ranks[a.slot] - ranks[b.slot] || keys[a.slot] - keys[b.slot] || 0;
+        return order === 0 ? a.slot - b.slot : order * sign;
+      };
+    }
+
     const keys = this.sortModel.map(({ columnId, direction = 'asc', compare }) => {
-      const values = this.columns.get(String(columnId))?.values;
+      const column = this.columns.get(String(columnId));
+      const values = column?.values;
       const sign = direction === 'desc' ? -1 : 1;
-      if (!values) return { order: () => 0, sign };
+      if (!column || !values) return { order: () => 0, sign };
       if (compare) return { order: (a: Row, b: Row) => compare(values[a.slot], values[b.slot]), sign };
       if (!precompute) return { order: (a: Row, b: Row) => compareValues(values[a.slot], values[b.slot]), sign };
 
-      const { ranks, keys: sortKeys } = createDefaultKey(values);
+      const { ranks, keys: sortKeys } = this.defaultKeyOf(column);
       return {
-        order: (a: Row, b: Row) => ranks[a.slot] - ranks[b.slot] || (ranks[a.slot] === 3 ? 0 : sortKeys[a.slot] - sortKeys[b.slot]) || 0,
+        order: (a: Row, b: Row) => ranks[a.slot] - ranks[b.slot] || sortKeys[a.slot] - sortKeys[b.slot] || 0,
         sign,
       };
     });

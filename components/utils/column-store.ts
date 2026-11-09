@@ -5,6 +5,9 @@
 class ColumnStore {
   values: unknown[];
 
+  /** Changes whenever a value is set, cleared or moved, so results computed from the values can be reused while it stays the same. */
+  version = 0;
+
   /** When each value last changed, 0 when unknown; only allocated once a value changes after loading. */
   private updatedAt: number[] | undefined = undefined;
 
@@ -21,6 +24,7 @@ class ColumnStore {
   }
 
   set(slot: number, value: unknown, updatedAt?: number) {
+    this.version++;
     while (this.values.length < slot) this.values.push(undefined);
     this.values[slot] = value;
     if (updatedAt === undefined && this.updatedAt === undefined) return;
@@ -32,6 +36,7 @@ class ColumnStore {
 
   /** Empties the given slots, leaving holes; the other slots keep their place. */
   clearSlots(slots: readonly number[]) {
+    this.version++;
     slots.forEach(slot => {
       if (slot < this.values.length) this.values[slot] = undefined;
       if (this.updatedAt && slot < this.updatedAt.length) this.updatedAt[slot] = 0;
@@ -40,6 +45,7 @@ class ColumnStore {
 
   /** Keeps only the given slots (ascending), renumbering them 0, 1, 2... in that order. */
   compact(slots: ArrayLike<number>) {
+    this.version++;
     this.values = Array.from(slots, slot => this.values[slot]);
     const { updatedAt } = this;
     if (updatedAt) this.updatedAt = Array.from(slots, slot => updatedAt[slot] ?? 0);
