@@ -57,15 +57,20 @@ const medianOf = (results: ScrollResult[], key: Metric) => median(results.map(re
 
 export const DEFAULT_STALL_ALLOWANCE = 2;
 
+/** Draw-time differences below this are timer resolution (0.1 ms) and noise, however large they look against a 2 ms baseline. */
+export const DEFAULT_MIN_DRAW_DIFFERENCE_MS = 0.2;
+
 /**
- * Compares the median of each metric across runs. `threshold` is the tolerated relative regression (0.3 = 30%),
- * `stallAllowance` the tolerated increase in stalled frames.
+ * Compares the median of each metric across runs. `threshold` is the tolerated relative regression (0.15 = 15%),
+ * `stallAllowance` the tolerated increase in stalled frames, and a time that got slower by less than
+ * `minDifferenceMs` never fails.
  */
 export const compareResults = (
   base: ScrollResult[],
   head: ScrollResult[],
   threshold: number,
   stallAllowance = DEFAULT_STALL_ALLOWANCE,
+  minDifferenceMs = DEFAULT_MIN_DRAW_DIFFERENCE_MS,
 ): MetricComparison[] =>
   metrics.map(({ key, label, higherIsBetter, gating, absolute = false }) => {
     const baseValue = medianOf(base, key);
@@ -73,7 +78,7 @@ export const compareResults = (
     const difference = higherIsBetter ? baseValue - headValue : headValue - baseValue;
     const regression = absolute ? difference : difference / baseValue;
     const allowed = absolute ? stallAllowance : threshold;
-    return { label, base: baseValue, head: headValue, regression, absolute, failed: gating && regression > allowed };
+    return { label, base: baseValue, head: headValue, regression, absolute, failed: gating && regression > allowed && (absolute || difference > minDifferenceMs) };
   });
 
 const formatPercent = (ratio: number) => `${ratio > 0 ? '+' : ''}${(ratio * 100).toFixed(1)}%`;
@@ -81,10 +86,10 @@ const formatPercent = (ratio: number) => `${ratio > 0 ? '+' : ''}${(ratio * 100)
 const formatChange = ({ regression, absolute }: MetricComparison) =>
   absolute ? `${regression > 0 ? '+' : ''}${regression}` : formatPercent(regression);
 
-export const formatMarkdown = (comparisons: MetricComparison[], threshold: number, runs: number, stallAllowance = DEFAULT_STALL_ALLOWANCE, renderer?: string) => [
+export const formatMarkdown = (comparisons: MetricComparison[], threshold: number, runs: number, stallAllowance = DEFAULT_STALL_ALLOWANCE, renderer?: string, minDifferenceMs = DEFAULT_MIN_DRAW_DIFFERENCE_MS) => [
   '## Scroll benchmark: base vs head',
   '',
-  `Median of ${runs} alternating runs on the same runner. Positive change means worse. Fails when mean or p95 draw time regresses by more than ${formatPercent(threshold).replace('+', '')}, or when more than ${stallAllowance} extra frames stall.`,
+  `Median of ${runs} alternating runs on the same runner. Positive change means worse. Fails when mean or p95 draw time regresses by more than ${formatPercent(threshold).replace('+', '')} and ${minDifferenceMs} ms, or when more than ${stallAllowance} extra frames stall.`,
   ...(renderer ? [`Renderer: ${renderer}${/swiftshader|llvmpipe|software/i.test(renderer) ? ' (software rasterisation: no GPU, so draw times are higher than on a real machine)' : ''}.`, ''] : []),
   '| Metric | Base | Head | Change | |',
   '|---|---|---|---|---|',

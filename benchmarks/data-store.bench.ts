@@ -24,14 +24,11 @@ interface DataStoreMeasurement extends Measurement {
   rows: number;
   /** What `medianMs` holds when it is not a time; memory entries report bytes per row. */
   unit?: 'bytes/row';
-  /** Whether CI fails on a regression; the rest are reported for information only (noisier or less central). */
+  /** Whether CI fails on a regression. */
   gating: boolean;
 }
 
 const repeat = (times: number, run: () => void) => Array.from({ length: times }).forEach(() => run());
-
-/** Only the core paths gate CI: every extra gated metric adds a chance of a false failure. */
-const isGating = (name: string) => !/^(wide|hot cells|mixed flush|heap)|text column|sort active/.test(name);
 
 const createStore = () => new DataStore({
   getRowId: row => row.id,
@@ -82,7 +79,7 @@ const measureMemory = (count: number, rows: RowInput[], wideRows: RowInput[]): D
   [`heap after setRows (wide, ${WIDE_COLUMNS} columns)`, wideRows],
 ].flatMap(([name, data]) => {
   const bytes = retainedBytesPerRow(data as RowInput[]);
-  return bytes === undefined ? [] : [{ name: name as string, runs: 3, medianMs: bytes, p95Ms: bytes, opsPerSecond: 0, unit: 'bytes/row' as const, rows: count, gating: false }];
+  return bytes === undefined ? [] : [{ name: name as string, runs: 3, medianMs: bytes, p95Ms: bytes, opsPerSecond: 0, unit: 'bytes/row' as const, rows: count, gating: true }];
 });
 
 const measureStore = (count: number): DataStoreMeasurement[] => {
@@ -222,7 +219,7 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
       streamStore.flush();
     }, { ...heavy, operations: 1000 }),
     ...measureMemory(count, rows, wideRows),
-  ].map(measurement => ({ ...measurement, rows: count, gating: isGating(measurement.name) }));
+  ].map(measurement => ({ ...measurement, rows: count, gating: true }));
 };
 
 it('data store benchmarks', () => {

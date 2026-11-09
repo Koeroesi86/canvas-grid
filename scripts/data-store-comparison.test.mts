@@ -84,6 +84,24 @@ describe('compareDataStore', () => {
   });
 });
 
+describe('heap results', () => {
+  const heap = (bytes: number, gating = true): DataStoreResult[] => [{ name: 'heap after setRows', rows: 20000, medianMs: bytes, gating, unit: 'bytes/row' }];
+
+  it('fail past the heap threshold, not the time threshold', () => {
+    assert.equal(compareDataStore([heap(200)], [heap(215)], 0.3)[0].failed, false);
+    assert.equal(compareDataStore([heap(200)], [heap(230)], 0.3)[0].failed, true);
+    assert.equal(compareDataStore([heap(200)], [heap(230)], 0.3, 0.2, 0.2)[0].failed, false);
+  });
+
+  it('ignore changes of a few bytes per row', () => {
+    assert.equal(compareDataStore([heap(20)], [heap(26)], 0.3)[0].failed, false);
+  });
+
+  it('do not fail when marked informational', () => {
+    assert.equal(compareDataStore([heap(200)], [heap(400, false)], 0.3)[0].failed, false);
+  });
+});
+
 describe('formatDataStoreMarkdown', () => {
   it('lists each benchmark and flags regressions', () => {
     const markdown = formatDataStoreMarkdown(compareDataStore([run(2)], [run(4)], 0.3), 0.3, 1);
