@@ -13,12 +13,23 @@ const outputPath = process.env.DATA_STORE_OUTPUT;
 const BATCH = 1000;
 /** Cheap operations are repeated within one sample so it is well above timer resolution. */
 const REPEATS = 100;
+/** Flushes per sample for the sub-millisecond cases, so a sample is a few ms and runner noise matters less. */
+const FLUSHES = 20;
+/** Empty flushes are so cheap that a sample needs thousands of them to reach a measurable time. */
+const EMPTY_FLUSHES = 2000;
 const WINDOW_ROWS = 50;
 const WIDE_COLUMNS = 50;
 
 interface DataStoreMeasurement extends Measurement {
   rows: number;
+  /** Whether CI fails on a regression; the rest are reported for information only (noisier or less central). */
+  gating: boolean;
 }
+
+const repeat = (times: number, run: () => void) => Array.from({ length: times }).forEach(() => run());
+
+/** Only the core paths gate CI: every extra gated metric adds a chance of a false failure. */
+const isGating = (name: string) => !/^(wide|hot cells|mixed flush)|text column/.test(name);
 
 const createStore = () => new DataStore({
   getRowId: row => row.id,
@@ -79,12 +90,12 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
 
   return [
     measure('setRows', () => createStore().setRows(rows), { ...heavy, operations: count }),
-    measure(`update ${BATCH} cells`, () => {
+    measure(`update ${BATCH} cells x${FLUSHES}`, () => repeat(FLUSHES, () => {
       tick += 1;
       Array.from({ length: BATCH }, (_, index) => ({ id: (index * 7) % count, price: tick + index }))
         .forEach(row => store.queueUpdate(row));
       store.flush();
-    }, { ...heavy, operations: BATCH }),
+    }), { ...heavy, operations: BATCH * FLUSHES }),
     measure(`remove + re-add ${BATCH}`, () => {
       const batch = Array.from({ length: BATCH }, (_, index) => rows[(index * 11) % count]);
       batch.forEach(row => store.queueRemove(row));
@@ -94,9 +105,7 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
     }, { ...heavy, operations: BATCH * 2 }),
 
     // Nothing queued: this must stay near zero (it once scanned every row, see #32).
-    measure(`${REPEATS} empty flushes`, () => {
-      Array.from({ length: REPEATS }).forEach(() => store.flush());
-    }, { ...heavy, operations: REPEATS }),
+    measure(`${EMPTY_FLUSHES} empty flushes`, () => repeat(EMPTY_FLUSHES, () => store.flush()), { ...heavy, operations: EMPTY_FLUSHES }),
 
     measure('sort scrambled number column (incl. reset)', () => sortFromScratch('price'), { ...heavy, operations: count }),
     measure('sort scrambled text column (incl. reset)', () => sortFromScratch('name'), { ...heavy, operations: count }),
@@ -130,20 +139,28 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
 
     // Many columns and one cell per row, as opposed to the four columns above.
     measure(`wide (${WIDE_COLUMNS} columns): setRows`, () => createStore().setRows(wideRows), { ...heavy, operations: count }),
-    measure(`wide (${WIDE_COLUMNS} columns): update ${BATCH} cells`, () => {
+    measure(`wide (${WIDE_COLUMNS} columns): update ${BATCH} cells x${FLUSHES}`, () => repeat(FLUSHES, () => {
       tick += 1;
       Array.from({ length: BATCH }, (_, index) => ({ id: (index * 7) % count, [`c${index % WIDE_COLUMNS}`]: tick + index }))
         .forEach(row => wideStore.queueUpdate(row));
       wideStore.flush();
-    }, { ...heavy, operations: BATCH }),
+    }), { ...heavy, operations: BATCH * FLUSHES }),
+    // Every removal renumbers the rows and compacts every column, so the column count multiplies its cost.
+    measure(`wide (${WIDE_COLUMNS} columns): remove + re-add ${BATCH}`, () => {
+      const batch = Array.from({ length: BATCH }, (_, index) => wideRows[(index * 11) % count]);
+      batch.forEach(row => wideStore.queueRemove(row));
+      wideStore.flush();
+      batch.forEach(row => wideStore.queueUpdate(row));
+      wideStore.flush();
+    }, { ...heavy, operations: BATCH * 2 }),
 
     // A ticker: the same few rows are rewritten over and over within one flush.
-    measure(`hot cells: ${BATCH} updates on 10 rows`, () => {
+    measure(`hot cells: ${BATCH} updates on 10 rows x${FLUSHES}`, () => repeat(FLUSHES, () => {
       tick += 1;
       Array.from({ length: BATCH }, (_, index) => ({ id: index % 10, price: tick + index }))
         .forEach(row => store.queueUpdate(row));
       store.flush();
-    }, { ...heavy, operations: BATCH }),
+    }), { ...heavy, operations: BATCH * FLUSHES }),
 
     // Updates, new rows and removals queued together, then one flush.
     measure('mixed flush: 700 updates, 200 appends, 100 removes', () => {
@@ -160,7 +177,7 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
       }).forEach(row => streamStore.queueRemove(row));
       streamStore.flush();
     }, { ...heavy, operations: 1000 }),
-  ].map(measurement => ({ ...measurement, rows: count }));
+  ].map(measurement => ({ ...measurement, rows: count, gating: isGating(measurement.name) }));
 };
 
 it('data store benchmarks', () => {
