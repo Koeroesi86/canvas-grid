@@ -11,11 +11,11 @@ import {
 
 /**
  * Runs the data store benchmark against a base checkout and the current checkout, alternating
- * between them so runner noise affects both, then compares medians at the largest row count.
+ * between them so runner noise affects both, then compares medians at each row count.
  *
  * Usage: node scripts/compare-data-store.mts <base-checkout-directory>
  * Environment: BENCHMARK_RUNS (default 5), DATA_STORE_THRESHOLD (default 0.3 = 30%),
- * DATA_STORE_MIN_DIFFERENCE_MS (default 0.2), BENCH_ROWS (default 20000).
+ * DATA_STORE_MIN_DIFFERENCE_MS (default 0.2), BENCH_ROWS (default 20000,100000).
  */
 const [baseArgument] = process.argv.slice(2);
 if (!baseArgument) throw new Error('Usage: node scripts/compare-data-store.mts <base-checkout-directory>');
@@ -36,7 +36,7 @@ const runBenchmark = (name: string, root: string, run: number): DataStoreResult[
   execFileSync(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'), 'run', '--config', 'vitest.bench.config.mts'], {
     cwd: root,
     stdio: 'inherit',
-    env: { ...process.env, BENCH_ROWS: process.env.BENCH_ROWS ?? '20000', DATA_STORE_OUTPUT: outputPath },
+    env: { ...process.env, BENCH_ROWS: process.env.BENCH_ROWS ?? '20000,100000', DATA_STORE_OUTPUT: outputPath },
   });
   return JSON.parse(readFileSync(outputPath, 'utf8'));
 };

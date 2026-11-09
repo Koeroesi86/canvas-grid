@@ -22,6 +22,8 @@ const WIDE_COLUMNS = 50;
 
 interface DataStoreMeasurement extends Measurement {
   rows: number;
+  /** What `medianMs` holds when it is not a time; memory entries report bytes per row. */
+  unit?: 'bytes/row';
   /** Whether CI fails on a regression; the rest are reported for information only (noisier or less central). */
   gating: boolean;
 }
@@ -29,7 +31,7 @@ interface DataStoreMeasurement extends Measurement {
 const repeat = (times: number, run: () => void) => Array.from({ length: times }).forEach(() => run());
 
 /** Only the core paths gate CI: every extra gated metric adds a chance of a false failure. */
-const isGating = (name: string) => !/^(wide|hot cells|mixed flush)|text column/.test(name);
+const isGating = (name: string) => !/^(wide|hot cells|mixed flush|heap)|text column|sort active/.test(name);
 
 const createStore = () => new DataStore({
   getRowId: row => row.id,
@@ -47,9 +49,9 @@ const createScrambledRow = (id: number, count: number): RowInput => {
 const createRows = (count: number): RowInput[] => Array.from({ length: count }, (_, id) => createRow(id));
 
 /** Rows with many numeric columns, `c0`..`c49`. */
-const createWideRow = (id: number): RowInput => Object.fromEntries([
+const createWideRow = (id: number, count: number): RowInput => Object.fromEntries([
   ['id', id],
-  ...Array.from({ length: WIDE_COLUMNS }, (_, column) => [`c${column}`, id + column]),
+  ...Array.from({ length: WIDE_COLUMNS }, (_, column) => [`c${column}`, (id * 7919 + column) % count]),
 ]);
 
 const createStoreWith = (rows: RowInput[]) => {
@@ -57,6 +59,31 @@ const createStoreWith = (rows: RowInput[]) => {
   store.setRows(rows);
   return store;
 };
+
+/** Heap kept alive by a loaded store, per row. Needs `--expose-gc` (set in vitest.bench.config.mts); skipped otherwise. */
+const retainedBytesPerRow = (rows: RowInput[]) => {
+  const collect = globalThis.gc;
+  if (!collect) return undefined;
+
+  const samples = Array.from({ length: 3 }, () => {
+    collect();
+    const before = process.memoryUsage().heapUsed;
+    const store = createStoreWith(rows);
+    collect();
+    const after = process.memoryUsage().heapUsed;
+    // keeps the store alive until the second reading
+    return store.rows.length > 0 ? (after - before) / rows.length : 0;
+  }).sort((a, b) => a - b);
+  return Math.round(samples[1]);
+};
+
+const measureMemory = (count: number, rows: RowInput[], wideRows: RowInput[]): DataStoreMeasurement[] => [
+  ['heap after setRows', rows],
+  [`heap after setRows (wide, ${WIDE_COLUMNS} columns)`, wideRows],
+].flatMap(([name, data]) => {
+  const bytes = retainedBytesPerRow(data as RowInput[]);
+  return bytes === undefined ? [] : [{ name: name as string, runs: 3, medianMs: bytes, p95Ms: bytes, opsPerSecond: 0, unit: 'bytes/row' as const, rows: count, gating: false }];
+});
 
 const measureStore = (count: number): DataStoreMeasurement[] => {
   const rows = createRows(count);
@@ -69,7 +96,7 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
   const sortedStore = createStoreWith(scrambledRows);
   sortedStore.setSortModel([{ columnId: 'price', direction: 'desc' }]);
 
-  const wideRows = Array.from({ length: count }, (_, id) => createWideRow(id));
+  const wideRows = Array.from({ length: count }, (_, id) => createWideRow(id, count));
   const wideStore = createStoreWith(wideRows);
 
   const streamStore = createStoreWith(rows);
@@ -80,7 +107,14 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
   const windowIds = Array.from({ length: WINDOW_ROWS }, (_, index) => middle + index);
   const windowColumns = ['name', 'price', 'quantity'];
 
+  const wideSortStore = createStoreWith(wideRows);
+
   const toggledDirection = (): SortDirection => (tick % 2 === 0 ? 'asc' : 'desc');
+  const sortWideFromScratch = () => {
+    tick += 1;
+    wideSortStore.setSortModel([]);
+    wideSortStore.setSortModel([{ columnId: 'c0', direction: toggledDirection() }]);
+  };
   /** Back to insertion order first, so every run sorts scrambled data rather than reversing a sorted list. */
   const sortFromScratch = (columnId: string) => {
     tick += 1;
@@ -108,6 +142,7 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
     measure(`${EMPTY_FLUSHES} empty flushes`, () => repeat(EMPTY_FLUSHES, () => store.flush()), { ...heavy, operations: EMPTY_FLUSHES }),
 
     measure('sort scrambled number column (incl. reset)', () => sortFromScratch('price'), { ...heavy, operations: count }),
+    measure(`wide (${WIDE_COLUMNS} columns): sort number column (incl. reset)`, sortWideFromScratch, { ...heavy, operations: count }),
     measure('sort scrambled text column (incl. reset)', () => sortFromScratch('name'), { ...heavy, operations: count }),
     measure(`update ${BATCH} cells of the sort column`, () => {
       tick += 1;
@@ -115,6 +150,15 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
         .forEach(row => sortedStore.queueUpdate(row));
       sortedStore.flush();
     }, { ...heavy, operations: BATCH }),
+
+    // Removal on a sorted store: the removal and sort costs together.
+    measure(`remove + re-add ${BATCH} (sort active)`, () => {
+      const batch = Array.from({ length: BATCH }, (_, index) => scrambledRows[(index * 11) % count]);
+      batch.forEach(row => sortedStore.queueRemove(row));
+      sortedStore.flush();
+      batch.forEach(row => sortedStore.queueUpdate(row));
+      sortedStore.flush();
+    }, { ...heavy, operations: BATCH * 2 }),
 
     // What the draw path does every frame for the visible range.
     measure(`read ${WINDOW_ROWS} visible rows x ${windowColumns.length} columns x ${REPEATS}`, () => {
@@ -177,6 +221,7 @@ const measureStore = (count: number): DataStoreMeasurement[] => {
       }).forEach(row => streamStore.queueRemove(row));
       streamStore.flush();
     }, { ...heavy, operations: 1000 }),
+    ...measureMemory(count, rows, wideRows),
   ].map(measurement => ({ ...measurement, rows: count, gating: isGating(measurement.name) }));
 };
 

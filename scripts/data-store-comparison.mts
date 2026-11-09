@@ -6,12 +6,15 @@ export interface DataStoreResult {
   medianMs: number;
   /** Whether a regression fails the comparison; informational benchmarks are only reported. */
   gating: boolean;
+  /** What `medianMs` holds when it is not a time in milliseconds (memory results are bytes per row). */
+  unit?: 'bytes/row';
 }
 
 export interface DataStoreComparison {
   name: string;
   rows: number;
   gating: boolean;
+  unit?: 'bytes/row';
   baseMs: number;
   headMs: number;
   /** Fastest and slowest run of each side, to show how noisy the median is. */
@@ -26,8 +29,8 @@ export interface DataStoreComparison {
 export const DEFAULT_MIN_DIFFERENCE_MS = 0.2;
 
 /**
- * Compares the median of each benchmark's median time across runs, at the largest row count only
- * (smaller sizes are noisier and cannot regress without the largest one showing it).
+ * Compares the median of each benchmark's median time across runs, at every row count the runs contain
+ * (costs that grow with the row count only show up at the larger ones).
  * `threshold` is the tolerated relative slowdown (0.3 = 30%), and a slowdown under `minDifferenceMs` never fails.
  * A benchmark fails only if head's *fastest* run is slower than base's median by more than that, so one slow
  * run (a noisy neighbour, a GC pause) cannot fail it; a real slowdown makes every run slower.
@@ -38,47 +41,51 @@ export const compareDataStore = (
   threshold: number,
   minDifferenceMs = DEFAULT_MIN_DIFFERENCE_MS,
 ): DataStoreComparison[] => {
-  const largest = Math.max(...head.flat().map(result => result.rows));
-  const valuesFor = (runs: DataStoreResult[][], name: string) =>
-    runs.flatMap(run => run.filter(result => result.rows === largest && result.name === name)).map(result => result.medianMs);
+  const sizes = Array.from(new Set(head.flat().map(result => result.rows))).sort((a, b) => a - b);
+  const valuesFor = (runs: DataStoreResult[][], rows: number, name: string) =>
+    runs.flatMap(run => run.filter(result => result.rows === rows && result.name === name)).map(result => result.medianMs);
 
-  return head[0]
-    .filter(result => result.rows === largest)
-    .map(({ name, gating }) => {
-      const baseValues = valuesFor(base, name);
-      const headValues = valuesFor(head, name);
+  return sizes.flatMap(rows => head[0]
+    .filter(result => result.rows === rows)
+    .map(({ name, gating, unit }) => {
+      const baseValues = valuesFor(base, rows, name);
+      const headValues = valuesFor(head, rows, name);
       const baseMs = median(baseValues);
       const headMs = median(headValues);
       const headBest = Math.min(...headValues);
       return {
         name,
-        rows: largest,
+        rows,
         gating,
+        unit,
         baseMs,
         headMs,
-        baseRange: [Math.min(...baseValues), Math.max(...baseValues)],
-        headRange: [headBest, Math.max(...headValues)],
+        baseRange: [Math.min(...baseValues), Math.max(...baseValues)] as [number, number],
+        headRange: [headBest, Math.max(...headValues)] as [number, number],
         regression: (headMs - baseMs) / baseMs,
         failed: gating && (headBest - baseMs) / baseMs > threshold && headBest - baseMs > minDifferenceMs,
       };
-    });
+    }));
 };
 
-const formatRange = ([low, high]: [number, number]) => `${low.toFixed(2)}–${high.toFixed(2)}`;
+const formatValue = (value: number, unit?: string) => (unit ? `${Math.round(value)}` : value.toFixed(2));
+
+const formatRange = ([low, high]: [number, number], unit?: string) => `${formatValue(low, unit)}–${formatValue(high, unit)}`;
 
 const formatPercent = (ratio: number) => `${ratio > 0 ? '+' : ''}${(ratio * 100).toFixed(1)}%`;
 
 export const formatDataStoreMarkdown = (comparisons: DataStoreComparison[], threshold: number, runs: number, minDifferenceMs = DEFAULT_MIN_DIFFERENCE_MS) => [
   '## Data store benchmark: base vs head',
   '',
-  `Median of ${runs} alternating runs on the same runner, at ${comparisons[0]?.rows} rows. Positive change means slower. Fails when even head's fastest run of a benchmark is more than ${formatPercent(threshold).replace('+', '')} and ${minDifferenceMs} ms slower than base's median. Ranges are the fastest and slowest run. Benchmarks marked info are reported but never fail.`,
+  `Median of ${runs} alternating runs on the same runner, at ${Array.from(new Set(comparisons.map(comparison => comparison.rows.toLocaleString('en')))).join(' and ')} rows. Positive change means slower (or larger). Fails when even head's fastest run of a benchmark is more than ${formatPercent(threshold).replace('+', '')} and ${minDifferenceMs} ms slower than base's median. Ranges are the fastest and slowest run. Times are in ms; heap results are bytes per row. Benchmarks marked info are reported but never fail.`,
   '',
-  '| Benchmark | Base median (range, ms) | Head median (range, ms) | Change | |',
-  '|---|---|---|---|---|',
+  '| Rows | Benchmark | Base median (range) | Head median (range) | Change | |',
+  '|---:|---|---|---|---|---|',
   ...comparisons.map(comparison => [
+    comparison.rows.toLocaleString('en'),
     comparison.name,
-    `${comparison.baseMs.toFixed(2)} (${formatRange(comparison.baseRange)})`,
-    `${comparison.headMs.toFixed(2)} (${formatRange(comparison.headRange)})`,
+    `${formatValue(comparison.baseMs, comparison.unit)} (${formatRange(comparison.baseRange, comparison.unit)})`,
+    `${formatValue(comparison.headMs, comparison.unit)} (${formatRange(comparison.headRange, comparison.unit)})`,
     formatPercent(comparison.regression),
     comparison.failed ? 'regression' : (!comparison.gating && 'info') || '',
   ].join(' | ')).map(row => `| ${row} |`),

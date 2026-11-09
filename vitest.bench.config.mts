@@ -5,5 +5,7 @@ export default defineConfig({
     include: ['benchmarks/**/*.bench.ts'],
     testTimeout: 0,
     reporters: ['dot'],
+    // lets the memory benchmark collect garbage before reading the heap
+    execArgv: ['--expose-gc'],
   },
 });
