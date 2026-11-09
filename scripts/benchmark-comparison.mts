@@ -81,11 +81,11 @@ const formatPercent = (ratio: number) => `${ratio > 0 ? '+' : ''}${(ratio * 100)
 const formatChange = ({ regression, absolute }: MetricComparison) =>
   absolute ? `${regression > 0 ? '+' : ''}${regression}` : formatPercent(regression);
 
-export const formatMarkdown = (comparisons: MetricComparison[], threshold: number, runs: number, stallAllowance = DEFAULT_STALL_ALLOWANCE) => [
+export const formatMarkdown = (comparisons: MetricComparison[], threshold: number, runs: number, stallAllowance = DEFAULT_STALL_ALLOWANCE, renderer?: string) => [
   '## Scroll benchmark: base vs head',
   '',
   `Median of ${runs} alternating runs on the same runner. Positive change means worse. Fails when mean or p95 draw time regresses by more than ${formatPercent(threshold).replace('+', '')}, or when more than ${stallAllowance} extra frames stall.`,
-  '',
+  ...(renderer ? [`Renderer: ${renderer}${/swiftshader|llvmpipe|software/i.test(renderer) ? ' (software rasterisation: no GPU, so draw times are higher than on a real machine)' : ''}.`, ''] : []),
   '| Metric | Base | Head | Change | |',
   '|---|---|---|---|---|',
   ...comparisons.map(comparison =>

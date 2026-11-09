@@ -88,4 +88,13 @@ describe('formatMarkdown', () => {
     const markdown = formatMarkdown(compareResults([result()], [result({ drawMeanMs: 10 })], 0.3), 0.3, 1);
     assert.match(markdown, /\| Draw time mean \(ms\) \| 5\.00 \| 10\.00 \| \+100\.0% \| regression \|/);
   });
+
+  it('states the renderer, and warns when it is software rasterisation', () => {
+    const comparisons = compareResults([result()], [result()], 0.3);
+    assert.match(formatMarkdown(comparisons, 0.3, 1, 2, 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device), SwiftShader driver)'), /Renderer: ANGLE .*software rasterisation/);
+    const gpu = formatMarkdown(comparisons, 0.3, 1, 2, 'ANGLE (AMD, AMD Radeon 780M Graphics, OpenGL ES 3.2)');
+    assert.match(gpu, /Renderer: ANGLE \(AMD/);
+    assert.doesNotMatch(gpu, /software/);
+    assert.doesNotMatch(formatMarkdown(comparisons, 0.3, 1), /Renderer/);
+  });
 });
