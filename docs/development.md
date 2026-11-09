@@ -1,6 +1,6 @@
 # Development
 
-Requires Node.js 22.18+ (the Node-side scripts are TypeScript run through Node's native type stripping).
+Requires Node.js 22.18+; `.nvmrc` pins 24, which CI uses (the Node-side scripts are TypeScript run through Node's native type stripping).
 
 ```sh
 npm ci
