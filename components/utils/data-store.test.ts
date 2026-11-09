@@ -345,4 +345,29 @@ describe('DataStore', () => {
       expect(sorted).toEqual(sorted.slice().sort((x, y) => y - x));
     });
   });
+
+  describe('setRows with uneven data', () => {
+    it('stores columns that only later rows have, and leaves the gaps empty', () => {
+      store.setRows([{ id: 1, a: 'x' }, { id: 2, a: 'y', b: 'only here' }, { id: 3, c: 3 }]);
+      expect(store.getValue(1, 'b')).toBeUndefined();
+      expect(store.getValue(2, 'b')).toBe('only here');
+      expect(store.getValue(3, 'c')).toBe(3);
+      expect(store.getValue(3, 'a')).toBeUndefined();
+    });
+
+    it('merges rows that repeat an id, the later values winning, in the first row position', () => {
+      store.setRows([{ id: 1, a: 'first', b: 'kept' }, { id: 2, a: 'two' }, { id: 1, a: 'second' }]);
+      expect(store.rows.keys).toEqual([1, 2]);
+      expect(store.getValue(1, 'a')).toBe('second');
+      expect(store.getValue(1, 'b')).toBe('kept');
+    });
+
+    it('starts from nothing when called again, and keeps the insertion order without a sort model', () => {
+      store.setRows([{ id: 'x', a: 1 }]);
+      store.setRows([{ id: 'z', b: 2 }, { id: 'y', b: 1 }]);
+      expect(store.rows.keys).toEqual(['z', 'y']);
+      expect(store.getValue('x', 'a')).toBeUndefined();
+      expect(store.columns.get('a')).toBeUndefined();
+    });
+  });
 });
