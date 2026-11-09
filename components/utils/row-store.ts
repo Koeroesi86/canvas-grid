@@ -11,7 +11,7 @@ export type Row = RowData;
 class RowStore {
   private items: Row[] = [];
 
-  private readonly indexById = new Map<string, number>();
+  private readonly byId = new Map<string, Row>();
 
   /** `tops[i]` is the offset of row `i` from the top of the first row. */
   private tops: number[] = [];
@@ -32,8 +32,7 @@ class RowStore {
   }
 
   get(id: Key): Row | undefined {
-    const index = this.indexById.get(String(id));
-    return index === undefined ? undefined : this.items[index];
+    return this.byId.get(String(id));
   }
 
   at(index: number): Row | undefined {
@@ -61,16 +60,19 @@ class RowStore {
 
   /** Appends the row, or replaces the row with the same id in place. */
   set(row: Omit<Row, 'index' | 'slot'>) {
-    const existing = this.indexById.get(String(row.id));
-    if (existing !== undefined) {
-      this.items[existing] = { ...row, index: existing, slot: this.items[existing].slot };
-      this.reindexFrom(existing);
+    const previous = this.byId.get(String(row.id));
+    if (previous) {
+      const replacement = { ...row, index: previous.index, slot: previous.slot };
+      this.items[previous.index] = replacement;
+      this.byId.set(String(row.id), replacement);
+      this.reindexFrom(previous.index);
       return;
     }
 
     const index = this.items.length;
-    this.items.push({ ...row, index, slot: index });
-    this.indexById.set(String(row.id), index);
+    const added = { ...row, index, slot: index };
+    this.items.push(added);
+    this.byId.set(String(row.id), added);
     this.tops.push(this.end);
     this.end += Math.round(row.height);
   }
@@ -89,7 +91,7 @@ class RowStore {
 
     const slots = Array.from(removed, row => row.slot).sort((a, b) => a - b);
     const first = Array.from(removed).reduce((lowest, row) => Math.min(lowest, row.index), Infinity);
-    removed.forEach(row => this.indexById.delete(String(row.id)));
+    removed.forEach(row => this.byId.delete(String(row.id)));
     this.items = this.items.filter(row => !removed.has(row));
 
     // slots stay dense: every row moves down by the number of removed slots below it
@@ -112,11 +114,53 @@ class RowStore {
     this.reindexFrom(0);
   }
 
+  /**
+   * Puts the given rows back in order, assuming every other row is already ordered.
+   * `compare` must be a total order (no ties), which a slot tiebreak provides. Costs one comparison pass per
+   * moved row (a binary search) plus a copy, instead of sorting every row.
+   */
+  resort(ids: Iterable<Key>, compare: (a: Row, b: Row) => number) {
+    const moving = new Set<Row>();
+    for (const id of ids) {
+      const row = this.get(id);
+      if (row) moving.add(row);
+    }
+    if (moving.size === 0) return;
+
+    const settled = this.items.filter(row => !moving.has(row));
+    const inserts = Array.from(moving).sort(compare);
+    const positions = inserts.map(row => this.lowerBound(settled, row, compare));
+
+    const result: Row[] = [];
+    let copied = 0;
+    inserts.forEach((row, at) => {
+      for (; copied < positions[at]; copied++) result.push(settled[copied]);
+      result.push(row);
+    });
+    for (; copied < settled.length; copied++) result.push(settled[copied]);
+
+    const firstMoved = Math.min(positions[0], ...Array.from(moving, row => row.index));
+    this.items = result;
+    this.reindexFrom(firstMoved);
+  }
+
   clear() {
     this.items = [];
-    this.indexById.clear();
+    this.byId.clear();
     this.tops = [];
     this.end = 0;
+  }
+
+  /** Index of the first row in `rows` that is not ordered before `row`. */
+  private lowerBound(rows: Row[], row: Row, compare: (a: Row, b: Row) => number) {
+    let low = 0;
+    let high = rows.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (compare(rows[middle], row) < 0) low = middle + 1;
+      else high = middle;
+    }
+    return low;
   }
 
   /** Recomputes positions and offsets from `from` onwards. */
@@ -126,7 +170,6 @@ class RowStore {
     for (let index = from; index < this.items.length; index++) {
       const row = this.items[index];
       row.index = index;
-      this.indexById.set(String(row.id), index);
       this.tops[index] = top;
       top += Math.round(row.height);
     }

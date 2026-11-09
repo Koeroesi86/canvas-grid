@@ -237,4 +237,84 @@ describe('DataStore', () => {
       expect(store.rows.keys).toEqual([4, 3, 1, 2]);
     });
   });
+  describe('re-sorting after updates', () => {
+    /** Same data in a store that always re-sorts everything, to compare with. */
+    const fullySorted = (rows: RowInput[], columnId: string, direction: 'asc' | 'desc') => {
+      const reference = createStore();
+      reference.setRows(rows);
+      reference.setSortModel([{ columnId, direction }]);
+      return reference.rows.keys;
+    };
+
+    const pseudoRandom = (seed: number) => () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+
+    it.each(['asc', 'desc'] as const)('moves a few changed rows to where a full sort puts them (%s)', direction => {
+      const random = pseudoRandom(7);
+      const rows: RowInput[] = Array.from({ length: 200 }, (_, id) => ({ id, price: Math.floor(random() * 50), name: `n${Math.floor(random() * 30)}` }));
+      store.setRows(rows);
+      store.setSortModel([{ columnId: 'price', direction }]);
+
+      for (let round = 0; round < 20; round++) {
+        const changes = Array.from({ length: 1 + (round % 5) }, () => ({ id: Math.floor(random() * 200), price: Math.floor(random() * 50) }));
+        changes.forEach(change => {
+          rows[change.id] = { ...rows[change.id], ...change };
+          store.queueUpdate(change);
+        });
+        store.flush();
+        expect(store.rows.keys).toEqual(fullySorted(rows, 'price', direction));
+        store.rows.keys.forEach((key, index) => expect(store.rows.get(key)?.index).toBe(index));
+      }
+    });
+
+    it('places new rows and removals correctly among the sorted rows', () => {
+      const rows: RowInput[] = Array.from({ length: 100 }, (_, id) => ({ id, price: (id * 37) % 101 }));
+      store.setRows(rows);
+      store.setSortModel([{ columnId: 'price' }]);
+
+      store.queueUpdate({ id: 500, price: 50 });
+      store.queueUpdate({ id: 501, price: -1 });
+      store.queueRemove({ id: 3 });
+      store.queueUpdate({ id: 4, price: 1000 });
+      store.flush();
+
+      const expected = [...rows.filter(row => row.id !== 3).map(row => (row.id === 4 ? { ...row, price: 1000 } : row)), { id: 500, price: 50 }, { id: 501, price: -1 }];
+      expect(store.rows.keys).toEqual(fullySorted(expected, 'price', 'asc'));
+    });
+
+    it('keeps the order total when values are equal', () => {
+      store.setRows(Array.from({ length: 80 }, (_, id) => ({ id, price: id % 2 })));
+      store.setSortModel([{ columnId: 'price' }]);
+      store.queueUpdate({ id: 10, price: 1 });
+      store.flush();
+      expect(store.rows.keys.filter(key => store.getValue(key, 'price') === 1)).toEqual([1, 3, 5, 7, 9, 10, 11, ...Array.from({ length: 34 }, (_, i) => 13 + (i * 2))]);
+    });
+
+    it('sorts everything when many rows changed', () => {
+      const rows: RowInput[] = Array.from({ length: 40 }, (_, id) => ({ id, price: id }));
+      store.setRows(rows);
+      store.setSortModel([{ columnId: 'price' }]);
+      rows.slice(0, 20).forEach(row => store.queueUpdate({ id: row.id, price: -row.id }));
+      store.flush();
+      expect(store.rows.keys.slice(0, 3)).toEqual([19, 18, 17]);
+    });
+  });
+
+  describe('default ordering', () => {
+    it('orders numbers, then text (by the collator), then other values, with empty values last', () => {
+      store.setRows([
+        { id: 'empty' },
+        { id: 'b', value: 'b' },
+        { id: 'ten', value: 10 },
+        { id: 'a', value: 'a' },
+        { id: 'two', value: 2 },
+        { id: 'flag', value: true },
+        { id: 'A', value: 'A' },
+      ]);
+      store.setSortModel([{ columnId: 'value' }]);
+      expect(store.rows.keys).toEqual(['two', 'ten', 'a', 'A', 'b', 'flag', 'empty']);
+    });
+  });
 });
