@@ -16,6 +16,8 @@ canvas-grid {
     left: 0;
     width: 100%;
     height: 100%;
+    /* the canvas is a fixed-size box, so layout and paint never depend on or leak into the rest of the page */
+    contain: strict;
 
     &.background {
       /* z-index: 1; */

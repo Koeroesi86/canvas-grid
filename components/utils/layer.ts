@@ -3,6 +3,8 @@ import { getContext2d } from './canvas';
 export interface LayerOptions {
   /** Transparent canvas. Opaque layers (`false`) draw faster; keep the bottom layer opaque. */
   alpha?: boolean;
+  /** Lets the browser present frames without syncing to the compositor: lower latency, but may tear. Off by default. */
+  desynchronized?: boolean;
   /** Name of an existing layer to stack this one below; defaults to the top. */
   before?: string;
 }
@@ -15,10 +17,10 @@ class Layer {
 
   readonly ctx: CanvasRenderingContext2D;
 
-  constructor(name: string, { alpha = true }: Pick<LayerOptions, 'alpha'> = {}) {
+  constructor(name: string, { alpha = true, desynchronized = false }: Pick<LayerOptions, 'alpha' | 'desynchronized'> = {}) {
     this.name = name;
     this.canvas.className = `drawingLayer ${name}`;
-    this.ctx = getContext2d(this.canvas, { alpha });
+    this.ctx = getContext2d(this.canvas, { alpha, desynchronized });
   }
 
   /** Size in CSS pixels; the backing store is `pixelRatio` times larger. */

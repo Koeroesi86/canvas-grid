@@ -32,7 +32,7 @@ Column object fields (`ColumnDefinition`):
 | `forceDraw()` | Clears and redraws everything |
 | `registerRenderer(name, renderer)` | Makes a [renderer](renderers.md) available to columns by name; an existing name is replaced |
 | `unregisterRenderer(name)` | Removes a registered renderer |
-| `addLayer(name, { alpha, before })` | Adds a canvas on top of the others (or below the layer named in `before`) |
+| `addLayer(name, { alpha, desynchronized, before })` | Adds a canvas on top of the others (or below the layer named in `before`); `desynchronized` opts into low-latency presentation, which may tear |
 | `removeLayer(name)` / `getLayer(name)` | Removes / looks up a layer (`{ name, canvas, ctx }`) |
 
 Updates are throttled (50 ms) and changed cells flash for `flashInDuration + flashOutDuration`.
