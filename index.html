@@ -4,100 +4,71 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Canvas Grid (dev)</title>
+  <!-- the demo site's theme, so the dev page looks like the demo -->
+  <link rel="stylesheet" href="/site/style.css">
   <style>
-    html, body {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      width: 100vw;
-      height: 100vh;
-      background: #0d1117;
-      color: #e6edf3;
-      font: 13px system-ui, sans-serif;
-    }
+    html, body { height: 100%; }
 
-    body {
+    /* the page fills the window: controls, the grid taking the remaining height, then the stats */
+    .page {
       display: flex;
       flex-direction: column;
-    }
-
-    .controls, .stats {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px 16px;
-      padding: 8px 12px;
-      margin: 0;
-    }
-
-    .stats div { display: flex; gap: 6px; }
-    .stats dt { color: #8b949e; }
-    .stats dd { margin: 0; }
-
-    label { display: flex; align-items: center; gap: 6px; }
-
-    .grid-frame {
-      position: relative;
-      flex: 1;
-      min-height: 0;
-    }
-
-    canvas-grid {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
       height: 100%;
+      padding: 16px;
     }
 
-    .status {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      margin: 0;
+    .page .grid-frame {
+      flex: 1;
+      min-height: 240px;
+      height: auto;
     }
+
+    .page h1 { font-size: 18px; margin-bottom: 12px; }
   </style>
   <script type="module" src="/components/example.ts"></script>
 </head>
 <body>
-<div class="controls">
-  <label>Rows
-    <select id="rows">
-      <option value="1000">1,000</option>
-      <option value="10000">10,000</option>
-      <option value="100000" selected>100,000</option>
-    </select>
-  </label>
-  <label>Updates per second
-    <select id="rate">
-      <option value="500">500</option>
-      <option value="5000">5,000</option>
-      <option value="20000" selected>20,000</option>
-      <option value="50000">50,000</option>
-      <option value="100000">100,000</option>
-    </select>
-  </label>
-  <label>Sort
-    <select id="sort">
-      <option value="">None</option>
-      <option value="price:desc">Price, high to low</option>
-      <option value="change:desc">Change, high to low</option>
-      <option value="change:asc">Change, low to high</option>
-      <option value="volume:desc">Volume, high to low</option>
-      <option value="symbol:asc">Symbol, A to Z</option>
-      <option value="sector:asc,price:desc">Sector, then price</option>
-    </select>
-  </label>
-  <button id="pause" type="button">Pause feed</button>
+<div class="page">
+  <h1>Canvas Grid <span style="color: var(--muted); font-weight: 400; font-size: 13px">dev: your sources, the demo's worker feed</span></h1>
+  <div class="controls">
+    <label>Rows
+      <select id="rows">
+        <option value="1000">1,000</option>
+        <option value="10000">10,000</option>
+        <option value="100000" selected>100,000</option>
+      </select>
+    </label>
+    <label>Updates per second
+      <select id="rate">
+        <option value="500">500</option>
+        <option value="5000">5,000</option>
+        <option value="20000" selected>20,000</option>
+        <option value="50000">50,000</option>
+        <option value="100000">100,000</option>
+      </select>
+    </label>
+    <label>Sort
+      <select id="sort">
+        <option value="">None</option>
+        <option value="price:desc">Price, high to low</option>
+        <option value="change:desc">Change, high to low</option>
+        <option value="change:asc">Change, low to high</option>
+        <option value="volume:desc">Volume, high to low</option>
+        <option value="symbol:asc">Symbol, A to Z</option>
+        <option value="sector:asc,price:desc">Sector, then price</option>
+      </select>
+    </label>
+    <button id="pause" type="button">Pause feed</button>
+  </div>
+
+  <div class="grid-frame">
+    <canvas-grid></canvas-grid>
+    <p id="status" class="status" role="status">Starting the feed…</p>
+  </div>
   <dl class="stats">
     <div><dt>Rows</dt><dd id="stat-rows">–</dd></div>
     <div><dt>Row updates received</dt><dd id="stat-rate">–</dd></div>
   </dl>
-</div>
-<div class="grid-frame">
-  <canvas-grid></canvas-grid>
-  <p id="status" class="status" role="status">Starting the feed…</p>
 </div>
 </body>
 </html>
