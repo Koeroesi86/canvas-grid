@@ -41,6 +41,26 @@ describe('fitText', () => {
     expect(fitText(decomposed, 40, '…', tenWide)).toBe('e\u0301'.repeat(3) + '…');
   });
 
+  it('keeps Indic letters and their vowel signs together', () => {
+    const letter = 'क\u093f';
+    expect(fitText(letter.repeat(6), 40, '…', tenWide)).toBe(`${letter.repeat(3)}…`);
+  });
+
+  it('keeps a Thai letter and its tone mark together', () => {
+    const letter = 'ก\u0e47';
+    expect(fitText(letter.repeat(6), 40, '…', tenWide)).toBe(`${letter.repeat(3)}…`);
+  });
+
+  it('keeps conjoining Hangul jamo of one syllable together', () => {
+    const syllable = '\u1112\u1161\u11ab';
+    expect(fitText(syllable.repeat(6), 40, '…', tenWide)).toBe(`${syllable.repeat(3)}…`);
+  });
+
+  it('measures precomposed Hangul and CJK one character at a time', () => {
+    expect(fitText('한국어텍스트입니다', 40, '…', tenWide)).toBe('한국어…');
+    expect(fitText('日本語のテキスト', 40, '…', tenWide)).toBe('日本語…');
+  });
+
   it('keeps a joined emoji sequence together', () => {
     const family = '👨‍👩‍👧';
     expect(fitText(`${family}${family}${family}`, 20, '…', tenWide)).toBe(`${family}…`);

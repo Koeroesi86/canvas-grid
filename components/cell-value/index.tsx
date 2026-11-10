@@ -66,10 +66,10 @@ export default class CellValueRenderer extends Renderer<CellValueOptions> implem
     this.renderer.clearCache();
   }
 
-  draw({ ctx, x, y, width, height, formatted, valueChanged, forced }: Readonly<CellContext>) {
+  draw({ ctx, x, y, width, height, column, formatted, valueChanged, forced }: Readonly<CellContext>) {
     if (!valueChanged && !forced) return;
 
     ctx.clearRect(x, y, width, height);
-    (<this.renderer.element value={formatted} width={width} height={height} />).draw(ctx, x, y);
+    (<this.renderer.element value={formatted} font={column?.font} width={width} height={height} />).draw(ctx, x, y);
   }
 }

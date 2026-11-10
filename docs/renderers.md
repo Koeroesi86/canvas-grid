@@ -33,7 +33,7 @@ A renderer is an object:
 | --- | --- |
 | `ctx` | Context of the renderer's layer |
 | `x`, `y`, `width`, `height` | Cell rectangle in canvas pixels |
-| `row`, `column` | `{ id, index }` of the row and the column header; `row` is undefined for headers, `column` for row numbers |
+| `row`, `column` | `{ id, index }` of the row and `{ id, index, displayName, font, headerFont }` of the column header (`font` / `headerFont` are the column's own fonts, when it set them); `row` is undefined for headers, `column` for row numbers |
 | `value`, `formatted` | Raw value and the string after the column's `valueFormatter` |
 | `updatedAt`, `age` | When the value last changed, and ms since then (`Infinity` if it never did) |
 | `now`, `dt` | Frame timestamp and ms since the previous draw (the grid only draws when something changed, so this can be long) |

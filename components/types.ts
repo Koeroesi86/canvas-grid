@@ -29,6 +29,8 @@ export interface SortKey {
 /** Props of a drawable element (see utils/jsx); positions are relative to the draw origin. */
 export interface RenderProps {
   value?: string;
+  /** CSS font of the text; defaults to the renderer's own. */
+  font?: string;
   x?: number;
   y?: number;
   width?: number;
@@ -47,6 +49,10 @@ export interface CellColumn {
   id: Key;
   index: number;
   displayName?: string;
+  /** Font of this column's cells, when it has its own. */
+  font?: string;
+  /** Font of this column's header, when it has its own. */
+  headerFont?: string;
 }
 
 /**

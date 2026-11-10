@@ -1,8 +1,9 @@
 /**
- * Characters that join with their neighbours into one visible glyph: surrogate pairs (most emoji), combining marks,
- * variation selectors and the zero width joiner. Text with any is measured per grapheme, not per UTF-16 unit.
+ * Characters that join with their neighbours into one visible glyph: any combining mark (accents, Indic vowel signs and
+ * viramas, Thai marks), the conjoining Hangul jamo, the zero width (non-)joiner and everything outside the BMP, which
+ * is a surrogate pair in UTF-16 (most emoji). Text with any is measured per grapheme, not per UTF-16 unit.
  */
-const joiningCharacters = /[̀-ͯ᪰-᫿᷀-᷿‍⃐-⃿︀-️︠-︯\ud800-\udfff]/;
+const joiningCharacters = /[\p{M}ᄀ-ᇿꥠ-꥿ힰ-퟿‌‍\u{10000}-\u{10ffff}]/u;
 
 /** From here on come combining marks, Hebrew, Arabic, the other scripts that shape or join, CJK and emoji. */
 const FIRST_COMPLEX_CODE = 0x300;
