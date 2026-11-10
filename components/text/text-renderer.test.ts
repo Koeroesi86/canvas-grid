@@ -65,6 +65,68 @@ describe('TextRenderer measurement cache', () => {
   });
 });
 
+describe('TextRenderer per-font measurements', () => {
+  it('keeps the widths of each font apart', () => {
+    const renderer = new TextRenderer({ font: '10px a' });
+    const props = { value: 'ab', width: 100, height: 20 };
+    const ctx = createPaintContext();
+    renderer.paint(ctx as never, props, 0, 0);
+    renderer.paint(ctx as never, { ...props, font: '20px a' }, 0, 0);
+    renderer.paint(ctx as never, props, 0, 0);
+    renderer.paint(ctx as never, { ...props, font: '20px a' }, 0, 0);
+    // 'a' and 'b' once in 10px and once in 20px, and never again
+    expect(measureText).toHaveBeenCalledTimes(4);
+  });
+
+  it('draws and cuts a cell in the font it is given', () => {
+    const ctx = createPaintContext();
+    // 46px wide, 6px padding: 40px, and a character is 20px wide in this font
+    new TextRenderer({ font: '10px a' }).paint(ctx as never, { value: 'hello', width: 46, height: 20, font: '20px a' }, 0, 0);
+    expect(ctx.font).toBe('20px a');
+    expect(ctx.fillText.mock.calls[0][0]).toBe('h…');
+  });
+
+  it('uses its own font for cells without one', () => {
+    const ctx = createPaintContext();
+    new TextRenderer({ font: '10px a' }).paint(ctx as never, { value: 'hello', width: 46, height: 20 }, 0, 0);
+    expect(ctx.font).toBe('10px a');
+    expect(ctx.fillText.mock.calls[0][0]).toBe('hel…');
+  });
+
+  it('measures all fonts again after clearCache', () => {
+    const renderer = new TextRenderer({ font: '10px a' });
+    const props = { value: 'ab', width: 100, height: 20 };
+    const ctx = createPaintContext();
+    renderer.paint(ctx as never, props, 0, 0);
+    renderer.paint(ctx as never, { ...props, font: '20px a' }, 0, 0);
+    renderer.clearCache();
+    renderer.paint(ctx as never, props, 0, 0);
+    renderer.paint(ctx as never, { ...props, font: '20px a' }, 0, 0);
+    expect(measureText).toHaveBeenCalledTimes(8);
+  });
+
+  it('tells monospace and proportional fonts apart per font', () => {
+    const ctx = createPaintContext();
+    const renderer = new TextRenderer({ font: '10px mono' });
+    // in the proportional font 'i' is narrow and kerning makes a whole string 25% narrower than its characters
+    const measure = vi.spyOn(fakeMeasureContext, 'measureText').mockImplementation(((text: string) => {
+      if (!fakeMeasureContext.font.includes('prop')) return { width: 8 * text.length };
+      return { width: text === 'i' ? 3 : text.length === 1 ? 8 : 6 * text.length };
+    }) as never);
+    try {
+      const props = { value: 'abcdefgh', width: 56, height: 20 };
+      // 50px available: monospace characters add up to 64px, so the text is cut
+      renderer.paint(ctx as never, props, 0, 0);
+      expect(ctx.fillText.mock.calls[0][0]).toBe('abcde…');
+      // measured as a whole it is 48px and fits, though its characters add up to 64px
+      renderer.paint(ctx as never, { ...props, font: '10px prop' }, 0, 0);
+      expect(ctx.fillText.mock.calls[1][0]).toBe('abcdefgh');
+    } finally {
+      measure.mockRestore();
+    }
+  });
+});
+
 describe('TextRenderer text style', () => {
   it('measures again after the style changed, since it changes the widths', () => {
     const renderer = new TextRenderer({ font: '10px a' });

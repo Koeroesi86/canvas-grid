@@ -68,7 +68,7 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
     this.textRenderer.clearCache();
   }
 
-  draw({ ctx, x, y, width, height, formatted }: Readonly<CellContext>) {
+  draw({ ctx, x, y, width, height, column, formatted }: Readonly<CellContext>) {
     if (width === 0 || height === 0) return;
 
     const { background, borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
@@ -78,7 +78,7 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
         <Rect width={width} height={height} color={background} />
         {borderRightWidth > 0 && <Rect x={width - borderRightWidth} width={borderRightWidth} height={height} color={borderRightColor} />}
         {borderBottomWidth > 0 && <Rect y={height - borderBottomWidth} width={width} height={borderBottomWidth} color={borderBottomColor} />}
-        <this.textRenderer.element value={formatted} width={width} height={height} />
+        <this.textRenderer.element value={formatted} font={column?.headerFont} width={width} height={height} />
       </Group>
     ).draw(ctx, x, y);
   }

@@ -39,6 +39,16 @@ export const defaultTextStyle: Readonly<TextStyle> = {
   direction: 'ltr',
 };
 
+/** What is measured for one font: character widths, the cuts already made and whether widths add up exactly. */
+interface FontMeasures {
+  font: string;
+  widths: Map<string, number>;
+  fitted: FitCache;
+  probed: boolean;
+  widthOf: (character: string) => number;
+  exactFit: ExactFit;
+}
+
 /** First letter of a right-to-left script (Hebrew, Arabic, Syriac, Thaana, N'Ko and their presentation forms). */
 const rightToLeftLetter = /^[^\p{L}]*(?=[֐-ࣿיִ-﷿ﹰ-ﻼ])\p{L}/u;
 
@@ -57,9 +67,8 @@ class TextRenderer extends Renderer<TextOptions> {
     isEllipsisRight: true,
   };
 
-  private readonly characterWidths = new Map<string, number>();
-
-  private readonly fitted: FitCache = new Map();
+  /** Measurements per font, so columns with their own font do not mix up widths. Cleared when anything affecting widths changes. */
+  private readonly fonts = new Map<string, FontMeasures>();
 
   private readonly measureContext = getContext2d(document.createElement('canvas'));
 
@@ -109,59 +118,75 @@ class TextRenderer extends Renderer<TextOptions> {
   pixelRatio = 1;
 
   clearCache() {
-    this.characterWidths.clear();
-    this.fitted.clear();
+    this.fonts.clear();
+    this.lastMeasures = undefined;
     this.measuredState = '';
   }
 
-  /** Gives the measuring context the font and style the text is drawn with. */
-  private prepareMeasuring() {
-    const { font, textRendering, fontKerning, letterSpacing } = this.options;
-    const state = `${font}|${textRendering}|${fontKerning}|${letterSpacing}`;
-    if (this.measuredState === state) return;
+  /** The measurements of a font, created on first use. */
+  private measuresOf(font: string) {
+    const known = this.fonts.get(font);
+    if (known) return known;
 
-    this.measureContext.font = font;
-    this.measureContext.textRendering = textRendering;
-    this.measureContext.fontKerning = fontKerning;
-    this.measureContext.letterSpacing = letterSpacing;
-    this.measuredState = state;
-    // in a monospace font the character widths add up to the width of any Latin text, so that text needs no measuring
-    this.exactFit.sumIsExact = Math.abs(this.measureContext.measureText('i').width - this.measureContext.measureText('W').width) < 0.01;
+    const fitted: FitCache = new Map();
+    const measures: FontMeasures = {
+      font,
+      widths: new Map(),
+      fitted,
+      probed: false,
+      // passed to `fitText` as they are, so drawing a cell allocates no closures
+      widthOf: character => this.measureCharacter(measures, character),
+      exactFit: { measure: text => this.measureString(measures, text), cache: fitted, sumIsExact: true },
+    };
+    this.fonts.set(font, measures);
+    return measures;
   }
 
-  /** Passed to `fitText` as they are, so drawing a cell allocates no closures. */
-  private readonly widthOfCharacter = (character: string) => this.measureCharacter(character);
+  /** Gives the measuring context the font and style the text is drawn with. */
+  private prepareMeasuring(measures: FontMeasures) {
+    const { textRendering, fontKerning, letterSpacing } = this.options;
+    const state = `${measures.font}|${textRendering}|${fontKerning}|${letterSpacing}`;
+    if (this.measuredState !== state) {
+      this.measureContext.font = measures.font;
+      this.measureContext.textRendering = textRendering;
+      this.measureContext.fontKerning = fontKerning;
+      this.measureContext.letterSpacing = letterSpacing;
+      this.measuredState = state;
+    }
+    if (measures.probed) return;
 
-  /** What `fitText` needs to measure a cut cell exactly; `sumIsExact` follows the font, see `prepareMeasuring`. */
-  private readonly exactFit: ExactFit = {
-    measure: (text: string) => this.measureString(text),
-    cache: this.fitted,
-    sumIsExact: true,
-  };
+    measures.probed = true;
+    // in a monospace font the character widths add up to the width of any Latin text, so that text needs no measuring
+    measures.exactFit.sumIsExact = Math.abs(this.measureContext.measureText('i').width - this.measureContext.measureText('W').width) < 0.01;
+  }
 
-  /** Width of one character in the current font, measured once. */
-  private measureCharacter(character: string) {
-    const cached = this.characterWidths.get(character);
+  /** Width of one character in a font, measured once. */
+  private measureCharacter(measures: FontMeasures, character: string) {
+    const cached = measures.widths.get(character);
     if (cached !== undefined) return cached;
 
-    this.prepareMeasuring();
+    this.prepareMeasuring(measures);
     const width = this.measureContext.measureText(character).width;
-    this.characterWidths.set(character, width);
+    measures.widths.set(character, width);
     return width;
   }
 
   /** Width of a string as the browser lays it out: includes kerning, ligatures and joined scripts. */
-  private measureString(text: string) {
-    this.prepareMeasuring();
+  private measureString(measures: FontMeasures, text: string) {
+    this.prepareMeasuring(measures);
     return this.measureContext.measureText(text).width;
   }
 
-  /** Sum of the character widths: exact for monospace fonts, a close upper bound for most others. */
+  /** Sum of the character widths in the renderer's font: exact for monospace fonts, a close upper bound for most others. */
   getTextWidth(text: string) {
+    const { widthOf } = this.measuresOf(this.options.font);
     let totalWidth = 0;
-    for (let i = 0; i < text.length; i++) totalWidth += this.measureCharacter(text.charAt(i));
+    for (let i = 0; i < text.length; i++) totalWidth += widthOf(text.charAt(i));
     return totalWidth;
   }
+
+  /** The font of the cell drawn last: columns mostly share one, so the lookup by font name is skipped. */
+  private lastMeasures: FontMeasures | undefined = undefined;
 
   private isRightToLeft(text: string) {
     const { direction } = this.options;
@@ -173,10 +198,12 @@ class TextRenderer extends Renderer<TextOptions> {
    * The whole string is drawn with one `fillText`: recording one command per cell is much cheaper than
    * one `drawImage` per character, and the browser keeps its own glyph cache.
    */
-  paint(ctx: CanvasRenderingContext2D, { value = '', x = 0, y = 0, width = 0, height = 0 }: RenderProps, originX: number, originY: number) {
+  paint(ctx: CanvasRenderingContext2D, { value = '', x = 0, y = 0, width = 0, height = 0, font = this.options.font }: RenderProps, originX: number, originY: number) {
     const { cellPadding } = this.options;
     const available = width - cellPadding.left - cellPadding.right;
-    const text = fitText(value, available, this.options.ellipsis, this.widthOfCharacter, this.exactFit);
+    const measures = this.lastMeasures?.font === font ? this.lastMeasures : this.measuresOf(font);
+    this.lastMeasures = measures;
+    const text = fitText(value, available, this.options.ellipsis, measures.widthOf, measures.exactFit);
     if (text === '' || height - cellPadding.top - cellPadding.bottom <= 0) return;
 
     const rightToLeft = this.styled && this.isRightToLeft(text);
@@ -186,7 +213,7 @@ class TextRenderer extends Renderer<TextOptions> {
       ctx.letterSpacing = this.options.letterSpacing;
       ctx.direction = rightToLeft ? 'rtl' : 'ltr';
     }
-    ctx.font = this.options.font;
+    ctx.font = font;
     ctx.fillStyle = this.options.color;
     ctx.textAlign = rightToLeft ? 'right' : 'left';
     // centred in the padded box, so fonts of different sizes line up in a row

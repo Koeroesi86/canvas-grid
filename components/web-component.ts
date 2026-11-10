@@ -60,6 +60,10 @@ export interface ColumnHeader {
   /** Renderers drawing a cell of this column, in order. Defaults to the grid's `cellRenderers`. */
   renderers?: RendererRef[];
   valueFormatter: (value: unknown) => string;
+  /** CSS font of this column's cells, instead of the grid's `font`. Not `'inherit'`: that is the grid's. */
+  font?: string;
+  /** CSS font of this column's header, instead of the grid's `headerFont`. */
+  headerFont?: string;
   /** Renderer drawing the header of this column. */
   headerRenderer: RendererRef;
 }

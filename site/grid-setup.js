@@ -67,9 +67,13 @@ export const configureGrid = grid => {
   grid.registerRenderer('trend', trendRenderer);
 };
 
+/** The symbol column keeps its own font whatever the font picker says, to show per-column fonts. */
+const symbolFont = '600 12px ui-monospace, Menlo, Consolas, monospace';
+
 /** Adds the formatters and the trend renderer to the columns the feed describes. */
 export const withColumnOptions = columns => columns.map(column => ({
   ...column,
   ...(formatters[column.id] && { valueFormatter: formatters[column.id] }),
+  ...(column.id === 'symbol' && { font: symbolFont }),
   ...(column.id === 'change' && { renderers: ['background', 'value', 'trend'] }),
 }));

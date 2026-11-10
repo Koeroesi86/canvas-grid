@@ -16,6 +16,8 @@ Column object fields (`ColumnDefinition`):
 | `width` | `100` | Column width in px |
 | `valueFormatter` | `String(value)` | Converts the raw value to the displayed string. Runs lazily, only for cells being drawn, and again only when the cell's value changes |
 | `renderers` | grid's `cellRenderers` | Renderers drawing a cell of this column, in order. Names of [registered renderers](renderers.md) or renderer objects |
+| `font` | grid `font` | CSS font of this column's cells, e.g. `'600 12px Menlo, monospace'`. Widths are measured per font, so mixing fonts costs nothing extra while drawing. Keep it within the row height (`cellHeight`); it is not `'inherit'`, which belongs to the grid's `font` |
+| `headerFont` | grid `headerFont` | CSS font of this column's header |
 | `headerRenderer` | `'header'` | Renderer drawing this column's header (name or object) |
 
 ## Methods
