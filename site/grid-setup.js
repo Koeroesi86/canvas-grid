@@ -36,10 +36,33 @@ export const parseSort = value => value
   })
   : [];
 
+/** The fonts the demo's font picker offers; the value is a CSS font-family. */
+export const fontFamilies = {
+  'ui-monospace, Menlo, Consolas, monospace': 'Monospace',
+  'system-ui, sans-serif': 'System sans-serif',
+  'Georgia, "Times New Roman", serif': 'Serif',
+  'Caveat, cursive': 'Handwriting (web font)',
+};
+
+/** Fills the font picker and applies its choice to the grid. */
+export const bindFontPicker = (select, grid) => {
+  select.replaceChildren(...Object.entries(fontFamilies).map(([family, label]) => new Option(label, family)));
+  select.addEventListener('change', () => applyFontFamily(grid, select.value));
+};
+
+/** Sets the font family on the grid's CSS, which the grid inherits, and has it pick the change up. */
+export const applyFontFamily = (grid, family) => {
+  grid.style.fontFamily = family;
+  // the published build may predate inheriting fonts, so tolerate its absence
+  grid.refreshFonts?.();
+};
+
 /** Fonts, and the extra layer and renderer the change column uses. */
 export const configureGrid = grid => {
-  grid.font = '12px ui-monospace, Menlo, Consolas, monospace';
-  grid.headerFont = '600 13px system-ui, sans-serif';
+  grid.style.fontSize = '12px';
+  grid.font = 'inherit';
+  grid.headerFont = 'inherit';
+  applyFontFamily(grid, Object.keys(fontFamilies)[0]);
   grid.addLayer('trend', { before: 'header' });
   grid.registerRenderer('trend', trendRenderer);
 };

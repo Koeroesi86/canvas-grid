@@ -12,6 +12,9 @@ import RendererRegistry from './utils/renderer-registry';
 import CellBackground from './cell-background';
 import HeaderRenderer from './header';
 import CellValueRenderer from './cell-value';
+import { defaultTextStyle } from './text';
+import type { TextStyle } from './text';
+import { resolveFont } from './utils/inherited-font';
 import type { LayerOptions } from './utils/layer';
 import type { CellContext, CellRenderer, CellState, Key, RendererRef, RowId, RowInput, SortDirection, SortKey } from './types';
 import type { RowIdGetter } from './utils/data-store';
@@ -84,10 +87,13 @@ declare global {
   }
 }
 
+const DEFAULT_FONT = '12px monospace';
+const DEFAULT_HEADER_FONT = '13px monospace';
+
 class CanvasGridComponent extends HTMLElement {
   fps = 30;
-  _font = '12px monospace';
-  _headerFont = '13px monospace';
+  _font = DEFAULT_FONT;
+  _headerFont = DEFAULT_HEADER_FONT;
   headerHeight = 30;
   cellHeight = 20;
   cellPadding = {
@@ -304,7 +310,7 @@ class CanvasGridComponent extends HTMLElement {
   set font(font: string) {
     if (this._font !== font) {
       this._font = font;
-      this.cellValueRenderer.font = font;
+      this.cellValueRenderer.font = resolveFont(font, getComputedStyle(this), DEFAULT_FONT);
     }
   }
 
@@ -315,7 +321,7 @@ class CanvasGridComponent extends HTMLElement {
   set headerFont(font: string) {
     if (this._headerFont !== font) {
       this._headerFont = font;
-      this.headerCellRenderer.font = font;
+      this.headerCellRenderer.font = resolveFont(font, getComputedStyle(this), DEFAULT_HEADER_FONT);
     }
   }
 
@@ -323,12 +329,57 @@ class CanvasGridComponent extends HTMLElement {
     return this._headerFont;
   }
 
+  private textStyle: TextStyle = { ...defaultTextStyle };
+
+  private setTextStyle(style: Partial<TextStyle>) {
+    this.textStyle = { ...this.textStyle, ...style };
+    this.cellValueRenderer.setTextStyle(this.textStyle);
+    this.headerCellRenderer.setTextStyle(this.textStyle);
+    this.forceDraw();
+  }
+
+  /** Canvas `textRendering` for cells and headers: `'auto'` (default), `'optimizeSpeed'`, `'optimizeLegibility'` or `'geometricPrecision'`. */
+  set textRendering(textRendering: TextStyle['textRendering']) {
+    this.setTextStyle({ textRendering });
+  }
+
+  get textRendering() {
+    return this.textStyle.textRendering;
+  }
+
+  /** Canvas `fontKerning` for cells and headers: `'auto'` (default), `'normal'` or `'none'`. */
+  set fontKerning(fontKerning: TextStyle['fontKerning']) {
+    this.setTextStyle({ fontKerning });
+  }
+
+  get fontKerning() {
+    return this.textStyle.fontKerning;
+  }
+
+  /** Extra space after each character as a CSS length, `'0px'` by default. */
+  set letterSpacing(letterSpacing: string) {
+    this.setTextStyle({ letterSpacing });
+  }
+
+  get letterSpacing() {
+    return this.textStyle.letterSpacing;
+  }
+
+  /** `'ltr'` (default), `'rtl'`, or `'auto'` to pick the direction per cell from its first letter. */
+  set direction(direction: TextStyle['direction']) {
+    this.setTextStyle({ direction });
+  }
+
+  get direction() {
+    return this.textStyle.direction;
+  }
+
   connectedCallback() {
     this.layers.forEach(layer => this.appendChild(layer.canvas));
     this.appendChild(this.scrollArea);
 
     this.updateLastRender();
-    this.resize();
+    this.refreshFonts();
     if (this.headers.length === 0) this.setColumns(Array(50).fill(1).map((_, index) => index));
 
     document.addEventListener('visibilitychange', this.onVisibilityChange);
@@ -368,10 +419,18 @@ class CanvasGridComponent extends HTMLElement {
     this.resize();
   };
 
-  private readonly onFontsLoaded = () => {
+  /**
+   * Re-reads the fonts and redraws. Call it after changing the CSS font of the grid or its ancestors
+   * while `font` / `headerFont` are `'inherit'`. Web fonts finishing to load trigger it too.
+   */
+  refreshFonts() {
+    this.cellValueRenderer.font = resolveFont(this._font, getComputedStyle(this), DEFAULT_FONT);
+    this.headerCellRenderer.font = resolveFont(this._headerFont, getComputedStyle(this), DEFAULT_HEADER_FONT);
     this.renderers.clearCaches();
     this.resize();
-  };
+  }
+
+  private readonly onFontsLoaded = () => this.refreshFonts();
 
   cancelRender() {
     if (this.animationFrame !== undefined) cancelAnimationFrame(this.animationFrame);
