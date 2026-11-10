@@ -1,6 +1,7 @@
 import React from '../utils/jsx';
 import Renderer from '../utils/renderer';
 import TextRenderer from '../text';
+import type { TextStyle } from '../text';
 import type { CellContext, CellRenderer } from '../types';
 
 export interface CellValueOptions {
@@ -55,6 +56,10 @@ export default class CellValueRenderer extends Renderer<CellValueOptions> implem
 
   get pixelRatio() {
     return this.renderer.pixelRatio;
+  }
+
+  setTextStyle(style: Partial<TextStyle>) {
+    this.renderer.setStyle(style);
   }
 
   clearCache() {

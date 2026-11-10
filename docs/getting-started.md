@@ -35,6 +35,7 @@ import '@koeroesi86/canvas-grid';
 const grid = document.querySelector('canvas-grid')!; // typed as CanvasGridComponent
 
 grid.font = '12px "Roboto", sans-serif';
+// or take the font from CSS: grid.font = 'inherit'; (call grid.refreshFonts() after changing it)
 
 grid.setColumns([
   'name',                                        // shorthand: id and header text

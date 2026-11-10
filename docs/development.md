@@ -15,7 +15,7 @@ npm run site         # preview the demo site (site/) on http://localhost:4000
 
 `DEV_PORT` (env or `.env`) changes the dev port.
 
-`npm run dev` shows the same simulated market feed as the demo site, with the same controls (rows, updates per second, sort, pause feed). The feed is `site/data-worker.js` running in a web worker, and the formatters, the extra `trend` layer and the sort options come from `site/grid-setup.js`, shared with the demo (`site/demo.js`), so changing either changes both. Unlike the demo, which loads the published package, the dev page imports `components/web-component.ts`, so edits reload immediately.
+`npm run dev` shows the same simulated market feed as the demo site, with the same controls (rows, updates per second, sort, font, pause feed). The feed is `site/data-worker.js` running in a web worker, and the formatters, the extra `trend` layer and the sort options come from `site/grid-setup.js`, shared with the demo (`site/demo.js`), so changing either changes both. Unlike the demo, which loads the published package, the dev page imports `components/web-component.ts`, so edits reload immediately.
 
 The demo site in `site/` is plain static files, with no build step. It loads the grid from unpkg and is fed by a web worker (`site/data-worker.js`). `npm run site` serves it locally; open `http://localhost:4000/?local` to run it against your own `npm run build` output instead of the published package. `SITE_PORT` changes the port. The site is deployed to GitHub Pages by `.github/workflows/pages.yml` whenever `site/` changes on `master`.
 

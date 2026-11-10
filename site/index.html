@@ -6,6 +6,8 @@
   <title>Canvas Grid</title>
   <meta name="description" content="A fast data grid rendered on canvas, shipped as a framework-agnostic web component and built for streams of frequent updates.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23161b22'/%3E%3Cpath d='M6 11h20M6 17h20M6 23h20M13 6v20M20 6v20' stroke='%23d6900d' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat&display=swap">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="demo.js"></script>
 </head>
@@ -65,6 +67,9 @@
           <option value="symbol:asc">Symbol, A to Z</option>
           <option value="sector:asc,price:desc">Sector, then price</option>
         </select>
+      </label>
+      <label>Font
+        <select id="font"></select>
       </label>
       <button id="pause" type="button">Pause feed</button>
     </div>

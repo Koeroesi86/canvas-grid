@@ -2,6 +2,7 @@ import React, { Group } from '../utils/jsx';
 import Renderer from '../utils/renderer';
 import Rect from '../rectangle';
 import TextRenderer from '../text';
+import type { TextStyle } from '../text';
 import type { CellContext, CellRenderer } from '../types';
 
 export interface HeaderOptions {
@@ -57,6 +58,10 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
 
   get pixelRatio() {
     return this.textRenderer.pixelRatio;
+  }
+
+  setTextStyle(style: Partial<TextStyle>) {
+    this.textRenderer.setStyle(style);
   }
 
   clearCache() {
