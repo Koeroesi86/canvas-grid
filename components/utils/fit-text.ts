@@ -79,6 +79,11 @@ export interface ExactFit {
   cache?: FitCache;
   /** The character widths add up to the real width, as for a monospace font: Latin text then needs no measuring. */
   sumIsExact: boolean;
+  /**
+   * How much wider (negative: narrower) two neighbouring characters are laid out than their own widths add up to:
+   * kerning and ligatures. With it, simple Latin text is cut by arithmetic instead of by measuring.
+   */
+  kerning?: (left: string, right: string) => number;
 }
 
 /** Cuts the units to fit using real measurements: the character sum is only an estimate where to cut. */
@@ -102,6 +107,37 @@ const fitExactly = (text: string, available: number, ellipsis: string, widthOf: 
 };
 
 /**
+ * Cuts text of simple characters with the character widths corrected by the kerning of each pair, which is how the
+ * browser lays out Latin text apart from rare effects over three or more letters. Measures nothing once the pairs are known.
+ */
+const fitKerned = (
+  text: string,
+  available: number,
+  ellipsis: string,
+  widthOf: (character: string) => number,
+  kerning: (left: string, right: string) => number,
+) => {
+  const ellipsisWidth = widthOf(ellipsis);
+  const ellipsisHead = ellipsis.charAt(0);
+  let used = 0;
+  let keep = 0;
+  while (keep < text.length) {
+    const next = used + widthOf(text.charAt(keep)) + (keep === 0 ? 0 : kerning(text.charAt(keep - 1), text.charAt(keep)));
+    if (next > available) break;
+    used = next;
+    keep++;
+  }
+  if (keep === text.length) return text;
+
+  // `used` is the width of the first `keep` characters; the ellipsis needs room too
+  while (keep > 0 && used + kerning(text.charAt(keep - 1), ellipsisHead) + ellipsisWidth > available) {
+    keep--;
+    used -= widthOf(text.charAt(keep)) + (keep === 0 ? 0 : kerning(text.charAt(keep - 1), text.charAt(keep)));
+  }
+  return keep > 0 || ellipsisWidth <= available ? text.slice(0, keep) + ellipsis : '';
+};
+
+/**
  * Cuts `text` to fit `available` pixels, ending in `ellipsis` when something was cut.
  * `widthOf` gives the width of one character, and the text width is the sum of those: cheap, and exact for a
  * monospace font. That is all that runs for text that fits, which is nearly every cell. A cell that does not fit
@@ -120,6 +156,7 @@ const fitText = (
   if (keep === text.length) return text;
   if (exact.sumIsExact && !hasComplexCharacters(text)) return keep < 0 ? '' : text.slice(0, keep) + ellipsis;
 
+  if (exact.kerning && !hasComplexCharacters(text)) return fitKerned(text, available, ellipsis, widthOf, exact.kerning);
   return fitExactly(text, available, ellipsis, widthOf, exact);
 };
 

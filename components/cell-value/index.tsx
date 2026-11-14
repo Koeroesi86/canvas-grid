@@ -13,7 +13,7 @@ export interface CellValueOptions {
 export default class CellValueRenderer extends Renderer<CellValueOptions> implements CellRenderer {
   static readonly defaultOptions: CellValueOptions = {
     layer: 'content',
-    font: '12px monospace',
+    font: '12px sans-serif',
     color: '#fff',
   };
 

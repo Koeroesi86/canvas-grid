@@ -38,18 +38,19 @@ Column object fields (`ColumnDefinition`):
 | `addLayer(name, { alpha, desynchronized, before })` | Adds a canvas on top of the others (or below the layer named in `before`); `desynchronized` opts into low-latency presentation, which may tear |
 | `removeLayer(name)` / `getLayer(name)` | Removes / looks up a layer (`{ name, canvas, ctx }`) |
 
-Updates are throttled (50 ms) and changed cells flash for `flashInDuration + flashOutDuration`.
+Updates are throttled (50 ms) and changed cells flash for `flashInDuration + flashOutDuration`, easing in and out. With `prefers-reduced-motion: reduce` the flash is a steady highlight for the same time. Odd rows are drawn slightly lighter, and the row under the pointer is highlighted.
 
 
 ## Properties
 
 | Property | Default | Description |
 | --- | --- | --- |
-| `font` | `'12px monospace'` | Cell font (CSS font shorthand), or `'inherit'` to use the grid element's computed CSS font |
-| `headerFont` | `'13px monospace'` | Header font, `'inherit'` works as for `font` |
+| `font` | `'12px sans-serif'` | Cell font (CSS font shorthand), or `'inherit'` to use the grid element's computed CSS font |
+| `headerFont` | `'13px sans-serif'` | Header font, `'inherit'` works as for `font` |
 | `textRendering` | `'auto'` | Canvas `textRendering` for cells and headers: `'optimizeSpeed'`, `'optimizeLegibility'` or `'geometricPrecision'` |
 | `fontKerning` | `'auto'` | Canvas `fontKerning`: `'normal'` or `'none'` |
 | `letterSpacing` | `'0px'` | Extra space after each character, a CSS length |
+| `textOverflow` | `'clip'` | Text wider than its cell: `'clip'` cuts it off at the cell edge and measures nothing, `'ellipsis'` shortens it and ends it with `…`, which means measuring it (see below) |
 | `direction` | `'ltr'` | `'rtl'`, or `'auto'` to pick the direction per cell from its first letter. Right-to-left text is aligned to the right of the cell, and an ellipsis ends it on the left |
 | `getRowId` | `(row) => row.id` | Derives the row id; assign your own to key rows differently |
 | `showHeaders` | `true` | Show the header row |
@@ -64,4 +65,4 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 
 ## Text
 
-Text is laid out with the browser's own canvas text engine, in the cell's padded box and vertically centred. Positions snap to device pixels, so it stays sharp at fractional zoom. A cell is cut with an ellipsis only when it really does not fit: widths are summed per character (cheap, exact for monospace fonts), and only cells that do not fit by that sum are measured as a whole string, so kerning, ligatures and joined scripts such as Arabic are accounted for. Characters that form one glyph (emoji, combining accents, Indic and Thai vowel signs, conjoining Hangul jamo) are never cut apart; where a cluster ends is decided by the browser's `Intl.Segmenter`. The style properties above are applied only when you set them; browsers without support for one of them ignore it.
+Text is laid out with the browser's own canvas text engine, in the cell's padded box and vertically centred. Positions snap to device pixels, so it stays sharp at fractional zoom. With `textOverflow: 'clip'` (the default) the text is drawn as it is, clipped to the padded cell; nothing is measured. With `'ellipsis'` a cell is cut only when it really does not fit: widths are summed per character (cheap, exact for monospace fonts), and cells that do not fit by that sum are cut using the kerning of each pair of letters, measured once per pair, so kerning and ligatures are accounted for. Text with joined scripts such as Arabic is measured as a whole string. Characters that form one glyph (emoji, combining accents, Indic and Thai vowel signs, conjoining Hangul jamo) are never cut apart; where a cluster ends is decided by the browser's `Intl.Segmenter`. The style properties above (apart from `textOverflow`) are applied only when you set them; browsers without support for one of them ignore it.

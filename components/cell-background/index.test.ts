@@ -70,11 +70,58 @@ describe('CellBackground', () => {
       const opacityAt = (age: number) => {
         const { cell, alphas } = createCell({ age });
         renderer.draw(cell);
-        return alphas[1];
+        return alphas[1] ?? 0;
       };
       expect(opacityAt(100)).toBeCloseTo(0.5);
       expect(opacityAt(200)).toBeCloseTo(1);
-      expect(opacityAt(400)).toBeCloseTo(0.5);
+      expect(opacityAt(400)).toBeCloseTo(0.25);
+      expect(opacityAt(600)).toBeCloseTo(0);
+    });
+
+    it('eases the flash out faster at first than at the end', () => {
+      const opacityAt = (age: number) => {
+        const { cell, alphas } = createCell({ age });
+        renderer.draw(cell);
+        return alphas[1] ?? 0;
+      };
+      expect(opacityAt(300) - opacityAt(400)).toBeGreaterThan(opacityAt(500) - opacityAt(600));
+    });
+
+    it('fades the hover highlight in and out', () => {
+      const hovering = new CellBackground();
+      const opacityAt = (index: number, now: number) => {
+        const { cell, alphas } = createCell({ row: { id: index, index }, now });
+        hovering.draw(cell);
+        return alphas.length > 1 ? alphas[1] : 0;
+      };
+      hovering.hover(4, 1000);
+      expect(opacityAt(4, 1000)).toBe(0);
+      const halfway = opacityAt(4, 1060);
+      expect(halfway).toBeGreaterThan(0);
+      expect(opacityAt(4, 1200)).toBeGreaterThan(halfway);
+      expect(opacityAt(2, 1200)).toBe(0);
+
+      hovering.hover(undefined, 2000);
+      expect(opacityAt(4, 2060)).toBeLessThan(opacityAt(4, 2000));
+      expect(opacityAt(4, 2200)).toBe(0);
+    });
+
+    it('reports a hover fade as animating only while it runs', () => {
+      const hovering = new CellBackground({ enableFlashing: false });
+      hovering.hover(4, 1000);
+      const animatingAt = (now: number) => hovering.isAnimating(createCell({ row: { id: 4, index: 4 }, now }).cell);
+      expect(animatingAt(1050)).toBe(true);
+      expect(animatingAt(1200)).toBe(false);
+    });
+
+    it('lightens odd rows only', () => {
+      const zebraAt = (index: number) => {
+        const { cell, alphas } = createCell({ row: { id: index, index } });
+        renderer.draw(cell);
+        return alphas.length;
+      };
+      expect(zebraAt(0)).toBe(1);
+      expect(zebraAt(1)).toBe(2);
     });
 
     it('keeps flashing while scrolling', () => {

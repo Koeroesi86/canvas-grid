@@ -17,6 +17,11 @@ export interface TextStyle {
    * so mixed data works. Right-to-left text is aligned to the right of the cell.
    */
   direction: 'ltr' | 'rtl' | 'auto';
+  /**
+   * What happens to text wider than its cell. `'clip'` cuts it off at the cell edge, which needs no measuring.
+   * `'ellipsis'` shortens it and ends it with the ellipsis, which means measuring the text.
+   */
+  textOverflow: 'clip' | 'ellipsis';
 }
 
 export interface TextOptions extends TextStyle {
@@ -37,17 +42,23 @@ export const defaultTextStyle: Readonly<TextStyle> = {
   fontKerning: 'auto',
   letterSpacing: '0px',
   direction: 'ltr',
+  textOverflow: 'clip',
 };
 
 /** What is measured for one font: character widths, the cuts already made and whether widths add up exactly. */
 interface FontMeasures {
   font: string;
   widths: Map<string, number>;
+  /** Kerning of the character pairs seen, by the two character codes. */
+  pairs: Map<number, number>;
   fitted: FitCache;
   probed: boolean;
   widthOf: (character: string) => number;
   exactFit: ExactFit;
 }
+
+/** From here on come combining marks, Hebrew, Arabic, the other scripts that shape or join, CJK and emoji. */
+const FIRST_COMPLEX_CHARACTER = 0x300;
 
 /** First letter of a right-to-left script (Hebrew, Arabic, Syriac, Thaana, N'Ko and their presentation forms). */
 const rightToLeftLetter = /^[^\p{L}]*(?=[֐-ࣿיִ-﷿ﹰ-ﻼ])\p{L}/u;
@@ -62,7 +73,7 @@ class TextRenderer extends Renderer<TextOptions> {
       bottom: 3,
       left: 3,
     },
-    font: '12px monospace',
+    font: '12px sans-serif',
     color: '#fff',
     isEllipsisRight: true,
   };
@@ -83,7 +94,8 @@ class TextRenderer extends Renderer<TextOptions> {
   }
 
   private differsFromDefault() {
-    return (Object.keys(defaultTextStyle) as Array<keyof TextStyle>).some(key => this.options[key] !== defaultTextStyle[key]);
+    // the overflow mode is not a canvas state, so it does not make the renderer set any per cell
+    return (Object.keys(defaultTextStyle) as Array<keyof TextStyle>).some(key => key !== 'textOverflow' && this.options[key] !== defaultTextStyle[key]);
   }
 
   set font(font: string) {
@@ -132,11 +144,17 @@ class TextRenderer extends Renderer<TextOptions> {
     const measures: FontMeasures = {
       font,
       widths: new Map(),
+      pairs: new Map(),
       fitted,
       probed: false,
       // passed to `fitText` as they are, so drawing a cell allocates no closures
       widthOf: character => this.measureCharacter(measures, character),
-      exactFit: { measure: text => this.measureString(measures, text), cache: fitted, sumIsExact: true },
+      exactFit: {
+        measure: text => this.measureString(measures, text),
+        cache: fitted,
+        sumIsExact: true,
+        kerning: (left, right) => this.measureKerning(measures, left, right),
+      },
     };
     this.fonts.set(font, measures);
     return measures;
@@ -171,6 +189,17 @@ class TextRenderer extends Renderer<TextOptions> {
     return width;
   }
 
+  /** What a pair of characters is wider than the two alone, measured once per pair: negative for kerned pairs such as "AV". */
+  private measureKerning(measures: FontMeasures, left: string, right: string) {
+    const key = left.charCodeAt(0) * 0x10000 + right.charCodeAt(0);
+    const known = measures.pairs.get(key);
+    if (known !== undefined) return known;
+
+    const kerning = this.measureString(measures, left + right) - this.measureCharacter(measures, left) - this.measureCharacter(measures, right);
+    measures.pairs.set(key, kerning);
+    return kerning;
+  }
+
   /** Width of a string as the browser lays it out: includes kerning, ligatures and joined scripts. */
   private measureString(measures: FontMeasures, text: string) {
     this.prepareMeasuring(measures);
@@ -183,6 +212,20 @@ class TextRenderer extends Renderer<TextOptions> {
     let totalWidth = 0;
     for (let i = 0; i < text.length; i++) totalWidth += widthOf(text.charAt(i));
     return totalWidth;
+  }
+
+  /**
+   * Whether simple text surely fits: the cached character widths add up to at most `available`. Kerning only narrows
+   * text, so a fit by the sum is a fit. Anything past Latin (joined scripts, emoji) is not trusted and gets clipped.
+   */
+  private fitsBySum(text: string, available: number, widthOf: (character: string) => number) {
+    let used = 0;
+    for (let i = 0; i < text.length; i++) {
+      if (text.charCodeAt(i) >= FIRST_COMPLEX_CHARACTER) return false;
+      used += widthOf(text.charAt(i));
+      if (used > available) return false;
+    }
+    return true;
   }
 
   /** The font of the cell drawn last: columns mostly share one, so the lookup by font name is skipped. */
@@ -203,8 +246,17 @@ class TextRenderer extends Renderer<TextOptions> {
     const available = width - cellPadding.left - cellPadding.right;
     const measures = this.lastMeasures?.font === font ? this.lastMeasures : this.measuresOf(font);
     this.lastMeasures = measures;
-    const text = fitText(value, available, this.options.ellipsis, measures.widthOf, measures.exactFit);
+    const clip = this.options.textOverflow === 'clip' && !this.fitsBySum(value, available, measures.widthOf);
+    const text = this.options.textOverflow === 'clip' ? value : fitText(value, available, this.options.ellipsis, measures.widthOf, measures.exactFit);
     if (text === '' || height - cellPadding.top - cellPadding.bottom <= 0) return;
+
+    if (clip) {
+      // only text that may be wider than the cell needs the (comparatively costly) clip
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(originX + x + cellPadding.left, originY + y, Math.max(0, available), height);
+      ctx.clip();
+    }
 
     const rightToLeft = this.styled && this.isRightToLeft(text);
     if (this.styled) {
@@ -226,6 +278,7 @@ class TextRenderer extends Renderer<TextOptions> {
       Math.round(textX * pixelRatio) / pixelRatio,
       Math.round((originY + y + cellPadding.top + (height - cellPadding.top - cellPadding.bottom) / 2) * pixelRatio) / pixelRatio,
     );
+    if (clip) ctx.restore();
   }
 
   readonly element = primitive<RenderProps>((ctx, props, x, y) => this.paint(ctx, props, x, y));

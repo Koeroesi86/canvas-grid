@@ -31,6 +31,8 @@ grid.draw = (...args) => {
   window.drawTimes.push(performance.now() - start);
 };
 
+// the default clips text without measuring it; the benchmark keeps the measured path, which is the costly one
+grid.textOverflow = params.get('overflow') === 'clip' ? 'clip' : 'ellipsis';
 grid.setColumns(columns);
 grid.setValues(rows);
 window.benchmarkReady = true;

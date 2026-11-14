@@ -1,4 +1,4 @@
-import { bindFontPicker, configureGrid, formatNumber, parseSort, withColumnOptions } from './grid-setup.js';
+import { bindFontPicker, configureGrid, fitRowNumbers, formatNumber, parseSort, withColumnOptions } from './grid-setup.js';
 
 // `?local` loads the grid from ./build (see `npm run site`) instead of unpkg, to try unreleased changes.
 const local = new URLSearchParams(location.search).has('local');
@@ -45,6 +45,7 @@ const start = async () => {
 
   worker.addEventListener('message', ({ data }) => {
     if (data.type === 'init') {
+      fitRowNumbers(grid, data.rows.length);
       grid.setColumns(withColumnOptions(data.columns));
       grid.setValues(data.rows);
       applySort();
