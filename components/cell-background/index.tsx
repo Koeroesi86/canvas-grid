@@ -19,6 +19,7 @@ export interface CellBackgroundOptions {
 /** Lightens odd rows slightly, whatever the background is. */
 const ZEBRA_COLOR = '#fff';
 const ZEBRA_ALPHA = 0.025;
+const HOVER_ALPHA = 0.06;
 /** Opacity of the flash that replaces the fade for people who prefer reduced motion. */
 const REDUCED_MOTION_ALPHA = 0.5;
 
@@ -45,6 +46,9 @@ class CellBackground extends Renderer<CellBackgroundOptions> implements CellRend
   constructor(options: Partial<CellBackgroundOptions> = {}) {
     super({ ...CellBackground.defaultOptions, ...options });
   }
+
+  /** Index of the row under the pointer, set by the grid. */
+  hoveredRowIndex: number | undefined = undefined;
 
   get layer() {
     return this.options.layer;
@@ -76,6 +80,7 @@ class CellBackground extends Renderer<CellBackgroundOptions> implements CellRend
       <Group>
         <Rect width={width} height={height} color={background} />
         {row !== undefined && row.index % 2 === 1 && <Rect width={width} height={height} color={ZEBRA_COLOR} alpha={ZEBRA_ALPHA} />}
+        {row !== undefined && row.index === this.hoveredRowIndex && <Rect width={width} height={height} color={ZEBRA_COLOR} alpha={HOVER_ALPHA} />}
         {flash > 0 && <Rect width={width} height={height} color={`rgb(${flashRGB})`} alpha={flash} />}
         {borderRightWidth > 0 && <Rect x={width - borderRightWidth} width={borderRightWidth} height={height} color={borderRightColor} />}
         {borderBottomWidth > 0 && <Rect y={height - borderBottomWidth} width={width} height={borderBottomWidth} color={borderBottomColor} />}

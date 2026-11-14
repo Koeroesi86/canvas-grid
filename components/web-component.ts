@@ -400,6 +400,8 @@ class CanvasGridComponent extends HTMLElement {
     const debounceAfterScroll = debounce(() => {
       this.isScrolling = false;
     }, 200);
+    this.scrollArea.addEventListener('pointermove', this.onPointerMove);
+    this.scrollArea.addEventListener('pointerleave', this.onPointerLeave);
     // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
     this.scrollArea.addEventListener('scroll', () => {
       this.isScrolling = true;
@@ -407,6 +409,26 @@ class CanvasGridComponent extends HTMLElement {
       this.requestRender();
     });
   }
+
+  /** Rows whose cells must be redrawn because the hover highlight moved off or onto them. */
+  private hoverDirty: (number | undefined)[] = [];
+
+  private setHoveredRow(index: number | undefined) {
+    const previous = this.cellBackgroundRenderer.hoveredRowIndex;
+    if (previous === index) return;
+
+    this.cellBackgroundRenderer.hoveredRowIndex = index;
+    this.hoverDirty = [previous, index];
+    this.requestRender();
+  }
+
+  private readonly onPointerMove = (event: PointerEvent) => {
+    const y = event.clientY - this.getBoundingClientRect().top - (this.showHeaders ? this.headerHeight : 0);
+    const index = this._dataCollection.indexAt(y + this.scrollArea.scrollTop);
+    this.setHoveredRow(y < 0 || index >= this._dataCollection.length ? undefined : index);
+  };
+
+  private readonly onPointerLeave = () => this.setHoveredRow(undefined);
 
   private fontsTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
@@ -615,7 +637,7 @@ class CanvasGridComponent extends HTMLElement {
           const refs = header.renderers ?? this.cellRenderers;
           const animating = this.isAnimating(refs);
           // an animation gets one last frame after it stops, so its final state is what stays on screen
-          if (redrawAll || valueChanged || animating || entry.animating) this.paintAll(refs);
+          if (redrawAll || valueChanged || animating || entry.animating || this.hoverDirty.includes(rowIndex)) this.paintAll(refs);
           entry.animating = animating;
           entry.value = value;
           entry.formatted = formatted;
@@ -626,6 +648,7 @@ class CanvasGridComponent extends HTMLElement {
     if (this.scrollYOffset > 0 || this.scrollXOffset > 0) {
       this.renderBrick();
     }
+    this.hoverDirty = [];
     this.prevScrollYOffset = this.scrollYOffset;
     this.prevScrollXOffset = this.scrollXOffset;
     if (keepDrawing) this.requestRender();

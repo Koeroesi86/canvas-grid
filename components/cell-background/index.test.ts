@@ -87,6 +87,18 @@ describe('CellBackground', () => {
       expect(opacityAt(300) - opacityAt(400)).toBeGreaterThan(opacityAt(500) - opacityAt(600));
     });
 
+    it('highlights the hovered row', () => {
+      const hovering = new CellBackground();
+      hovering.hoveredRowIndex = 4;
+      const draws = (index: number) => {
+        const { cell, alphas } = createCell({ row: { id: index, index } });
+        hovering.draw(cell);
+        return alphas.length;
+      };
+      expect(draws(4)).toBe(2);
+      expect(draws(2)).toBe(1);
+    });
+
     it('lightens odd rows only', () => {
       const zebraAt = (index: number) => {
         const { cell, alphas } = createCell({ row: { id: index, index } });
