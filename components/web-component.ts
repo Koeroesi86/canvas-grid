@@ -405,6 +405,7 @@ class CanvasGridComponent extends HTMLElement {
     // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
     this.scrollArea.addEventListener('scroll', () => {
       this.isScrolling = true;
+      this.updateHoveredRow();
       debounceAfterScroll();
       this.requestRender();
     });
@@ -418,17 +419,31 @@ class CanvasGridComponent extends HTMLElement {
     if (previous === index) return;
 
     this.cellBackgroundRenderer.hoveredRowIndex = index;
-    this.hoverDirty = [previous, index];
+    // added to, not replaced: the pointer can cross several rows before the next frame, and each needs its redraw
+    this.hoverDirty.push(previous, index);
     this.requestRender();
   }
 
-  private readonly onPointerMove = (event: PointerEvent) => {
-    const y = event.clientY - this.getBoundingClientRect().top - (this.showHeaders ? this.headerHeight : 0);
+  /** Pointer position relative to the grid, kept to find the hovered row again after scrolling. */
+  private pointerY: number | undefined = undefined;
+
+  private updateHoveredRow() {
+    if (this.pointerY === undefined) return;
+
+    const y = this.pointerY - (this.showHeaders ? this.headerHeight : 0);
     const index = this._dataCollection.indexAt(y + this.scrollArea.scrollTop);
     this.setHoveredRow(y < 0 || index >= this._dataCollection.length ? undefined : index);
+  }
+
+  private readonly onPointerMove = (event: PointerEvent) => {
+    this.pointerY = event.clientY - this.getBoundingClientRect().top;
+    this.updateHoveredRow();
   };
 
-  private readonly onPointerLeave = () => this.setHoveredRow(undefined);
+  private readonly onPointerLeave = () => {
+    this.pointerY = undefined;
+    this.setHoveredRow(undefined);
+  };
 
   private fontsTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
