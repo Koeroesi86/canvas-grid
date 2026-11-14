@@ -91,11 +91,14 @@ declare global {
   }
 }
 
+/** Slack for the frame cap, in ms. */
+const FRAME_JITTER_MS = 2;
 const DEFAULT_FONT = '12px sans-serif';
 const DEFAULT_HEADER_FONT = '13px sans-serif';
 
 class CanvasGridComponent extends HTMLElement {
-  fps = 30;
+  /** Maximum redraw rate. */
+  fps = 60;
   _font = DEFAULT_FONT;
   _headerFont = DEFAULT_HEADER_FONT;
   headerHeight = 30;
@@ -502,7 +505,8 @@ class CanvasGridComponent extends HTMLElement {
     this.readScrollOffsets();
     const delta = new Date().valueOf() - this.lastRender;
     // the frame cap is for animations; scrolling draws on every frame, or it would visibly lag behind the scrollbar
-    if (!this.isScrolling && delta < (1000 / this.fps)) {
+    // a little under the frame time: frames arrive a fraction early or late, and would otherwise be skipped by turns
+    if (!this.isScrolling && delta < (1000 / this.fps) - FRAME_JITTER_MS) {
       this.requestRender();
       return;
     }
@@ -767,6 +771,7 @@ class CanvasGridComponent extends HTMLElement {
   /** Orders the rows by the given columns, in priority order; an empty list restores the original order. */
   setSortModel(model: readonly SortKey[]) {
     this.dataStore.setSortModel(model);
+    this.headerCellRenderer.setSortModel(model);
     this.forceDraw();
   }
 

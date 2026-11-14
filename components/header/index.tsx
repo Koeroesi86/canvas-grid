@@ -3,7 +3,8 @@ import Renderer from '../utils/renderer';
 import Rect from '../rectangle';
 import TextRenderer from '../text';
 import type { TextStyle } from '../text';
-import type { CellContext, CellRenderer } from '../types';
+import SortIndicator, { SORT_INDICATOR_AREA } from '../sort-indicator';
+import type { CellContext, CellRenderer, SortDirection } from '../types';
 
 export interface HeaderOptions {
   layer: string;
@@ -29,6 +30,15 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
   };
 
   private readonly textRenderer: TextRenderer;
+
+  /** Sort direction by column id, set by the grid; sorted headers show an arrow. */
+  private readonly sortDirections = new Map<string, SortDirection>();
+
+  /** Shows the arrows of the columns in the sort model; the grid redraws the headers afterwards. */
+  setSortModel(model: readonly { columnId: string | number; direction?: SortDirection }[]) {
+    this.sortDirections.clear();
+    model.forEach(({ columnId, direction = 'asc' }) => this.sortDirections.set(String(columnId), direction));
+  }
 
   constructor(options: Partial<HeaderOptions> = {}) {
     super({ ...HeaderRenderer.defaultOptions, ...options });
@@ -71,6 +81,7 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
   draw({ ctx, x, y, width, height, column, formatted }: Readonly<CellContext>) {
     if (width === 0 || height === 0) return;
 
+    const direction = column === undefined ? undefined : this.sortDirections.get(String(column.id));
     const { background, borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
 
     (
@@ -78,7 +89,8 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
         <Rect width={width} height={height} color={background} />
         {borderRightWidth > 0 && <Rect x={width - borderRightWidth} width={borderRightWidth} height={height} color={borderRightColor} />}
         {borderBottomWidth > 0 && <Rect y={height - borderBottomWidth} width={width} height={borderBottomWidth} color={borderBottomColor} />}
-        <this.textRenderer.element value={formatted} font={column?.headerFont} width={width} height={height} />
+        <this.textRenderer.element value={formatted} font={column?.headerFont} width={direction ? width - SORT_INDICATOR_AREA : width} height={height} />
+        {direction && <SortIndicator width={width} height={height} direction={direction} color={this.options.color} />}
       </Group>
     ).draw(ctx, x, y);
   }
