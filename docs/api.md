@@ -58,7 +58,7 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 | `rowNumbersWidth` | `30` | Width of the row-number column |
 | `headerHeight` | `30` | Header row height |
 | `cellHeight` | `20` | Row height. Set it before `setValues`, it applies to rows as they are created |
-| `fps` | `30` | Maximum redraw rate |
+| `fps` | `60` | Maximum redraw rate; scrolling is not capped. Redraws only happen when something changed or animates |
 | `cellRenderers` | `['background', 'value']` | Renderers used by columns without their own `renderers` |
 | `flashInDuration` | `200` | Fade-in of the update flash in ms |
 | `flashOutDuration` | `400` | Fade-out of the update flash in ms |
