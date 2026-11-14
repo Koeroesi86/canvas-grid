@@ -38,8 +38,8 @@ export const parseSort = value => value
 
 /** The fonts the demo's font picker offers; the value is a CSS font-family. */
 export const fontFamilies = {
-  'ui-monospace, Menlo, Consolas, monospace': 'Monospace',
   'system-ui, sans-serif': 'System sans-serif',
+  'ui-monospace, Menlo, Consolas, monospace': 'Monospace',
   'Georgia, "Times New Roman", serif': 'Serif',
   'Caveat, cursive': 'Handwriting (web font)',
 };

@@ -62,7 +62,7 @@ class TextRenderer extends Renderer<TextOptions> {
       bottom: 3,
       left: 3,
     },
-    font: '12px monospace',
+    font: '12px sans-serif',
     color: '#fff',
     isEllipsisRight: true,
   };

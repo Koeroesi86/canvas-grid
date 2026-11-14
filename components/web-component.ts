@@ -91,8 +91,8 @@ declare global {
   }
 }
 
-const DEFAULT_FONT = '12px monospace';
-const DEFAULT_HEADER_FONT = '13px monospace';
+const DEFAULT_FONT = '12px sans-serif';
+const DEFAULT_HEADER_FONT = '13px sans-serif';
 
 class CanvasGridComponent extends HTMLElement {
   fps = 30;

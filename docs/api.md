@@ -45,8 +45,8 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 
 | Property | Default | Description |
 | --- | --- | --- |
-| `font` | `'12px monospace'` | Cell font (CSS font shorthand), or `'inherit'` to use the grid element's computed CSS font |
-| `headerFont` | `'13px monospace'` | Header font, `'inherit'` works as for `font` |
+| `font` | `'12px sans-serif'` | Cell font (CSS font shorthand), or `'inherit'` to use the grid element's computed CSS font |
+| `headerFont` | `'13px sans-serif'` | Header font, `'inherit'` works as for `font` |
 | `textRendering` | `'auto'` | Canvas `textRendering` for cells and headers: `'optimizeSpeed'`, `'optimizeLegibility'` or `'geometricPrecision'` |
 | `fontKerning` | `'auto'` | Canvas `fontKerning`: `'normal'` or `'none'` |
 | `letterSpacing` | `'0px'` | Extra space after each character, a CSS length |
