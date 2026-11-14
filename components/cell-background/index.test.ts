@@ -70,11 +70,31 @@ describe('CellBackground', () => {
       const opacityAt = (age: number) => {
         const { cell, alphas } = createCell({ age });
         renderer.draw(cell);
-        return alphas[1];
+        return alphas[1] ?? 0;
       };
       expect(opacityAt(100)).toBeCloseTo(0.5);
       expect(opacityAt(200)).toBeCloseTo(1);
-      expect(opacityAt(400)).toBeCloseTo(0.5);
+      expect(opacityAt(400)).toBeCloseTo(0.25);
+      expect(opacityAt(600)).toBeCloseTo(0);
+    });
+
+    it('eases the flash out faster at first than at the end', () => {
+      const opacityAt = (age: number) => {
+        const { cell, alphas } = createCell({ age });
+        renderer.draw(cell);
+        return alphas[1] ?? 0;
+      };
+      expect(opacityAt(300) - opacityAt(400)).toBeGreaterThan(opacityAt(500) - opacityAt(600));
+    });
+
+    it('lightens odd rows only', () => {
+      const zebraAt = (index: number) => {
+        const { cell, alphas } = createCell({ row: { id: index, index } });
+        renderer.draw(cell);
+        return alphas.length;
+      };
+      expect(zebraAt(0)).toBe(1);
+      expect(zebraAt(1)).toBe(2);
     });
 
     it('keeps flashing while scrolling', () => {

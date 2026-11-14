@@ -111,7 +111,7 @@ class CanvasGridComponent extends HTMLElement {
   rowNumbersWidth = 30;
   ellipsis = '…';
   _backgroundColor = '#333';
-  _headerBackgroundColor = '#222';
+  _headerBackgroundColor = '#262626';
   textColor = '#efefef';
   dataStore = new DataStore({
     getRowId: (row, index) => this.getRowId(row, index),
@@ -149,9 +149,9 @@ class CanvasGridComponent extends HTMLElement {
     flashOutDuration: 400,
     flashRGB: '214, 144, 13',
     borderRightWidth: 1,
-    borderRightColor: '#3f3f3f',
+    borderRightColor: '#3b3b3b',
     borderBottomWidth: 1,
-    borderBottomColor: '#3f3f3f',
+    borderBottomColor: '#3b3b3b',
   });
 
   cellValueRenderer = new CellValueRenderer({
@@ -164,11 +164,11 @@ class CanvasGridComponent extends HTMLElement {
     layer: builtIn.header,
     font: this._headerFont,
     color: this.textColor,
-    background: '#222',
+    background: '#262626',
     borderRightWidth: 1,
-    borderRightColor: '#2f2f2f',
+    borderRightColor: '#333',
     borderBottomWidth: 1,
-    borderBottomColor: '#2f2f2f',
+    borderBottomColor: '#4a4a4a',
   });
 
   loadingIndicator: Loading;
