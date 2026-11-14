@@ -87,16 +87,31 @@ describe('CellBackground', () => {
       expect(opacityAt(300) - opacityAt(400)).toBeGreaterThan(opacityAt(500) - opacityAt(600));
     });
 
-    it('highlights the hovered row', () => {
+    it('fades the hover highlight in and out', () => {
       const hovering = new CellBackground();
-      hovering.hoveredRowIndex = 4;
-      const draws = (index: number) => {
-        const { cell, alphas } = createCell({ row: { id: index, index } });
+      const opacityAt = (index: number, now: number) => {
+        const { cell, alphas } = createCell({ row: { id: index, index }, now });
         hovering.draw(cell);
-        return alphas.length;
+        return alphas.length > 1 ? alphas[1] : 0;
       };
-      expect(draws(4)).toBe(2);
-      expect(draws(2)).toBe(1);
+      hovering.hover(4, 1000);
+      expect(opacityAt(4, 1000)).toBe(0);
+      const halfway = opacityAt(4, 1060);
+      expect(halfway).toBeGreaterThan(0);
+      expect(opacityAt(4, 1200)).toBeGreaterThan(halfway);
+      expect(opacityAt(2, 1200)).toBe(0);
+
+      hovering.hover(undefined, 2000);
+      expect(opacityAt(4, 2060)).toBeLessThan(opacityAt(4, 2000));
+      expect(opacityAt(4, 2200)).toBe(0);
+    });
+
+    it('reports a hover fade as animating only while it runs', () => {
+      const hovering = new CellBackground({ enableFlashing: false });
+      hovering.hover(4, 1000);
+      const animatingAt = (now: number) => hovering.isAnimating(createCell({ row: { id: 4, index: 4 }, now }).cell);
+      expect(animatingAt(1050)).toBe(true);
+      expect(animatingAt(1200)).toBe(false);
     });
 
     it('lightens odd rows only', () => {

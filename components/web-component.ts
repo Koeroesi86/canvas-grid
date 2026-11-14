@@ -418,7 +418,7 @@ class CanvasGridComponent extends HTMLElement {
     const previous = this.cellBackgroundRenderer.hoveredRowIndex;
     if (previous === index) return;
 
-    this.cellBackgroundRenderer.hoveredRowIndex = index;
+    this.cellBackgroundRenderer.hover(index);
     // added to, not replaced: the pointer can cross several rows before the next frame, and each needs its redraw
     this.hoverDirty.push(previous, index);
     this.requestRender();
