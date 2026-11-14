@@ -91,8 +91,8 @@ declare global {
   }
 }
 
-const DEFAULT_FONT = '12px monospace';
-const DEFAULT_HEADER_FONT = '13px monospace';
+const DEFAULT_FONT = '12px sans-serif';
+const DEFAULT_HEADER_FONT = '13px sans-serif';
 
 class CanvasGridComponent extends HTMLElement {
   fps = 30;
@@ -111,7 +111,7 @@ class CanvasGridComponent extends HTMLElement {
   rowNumbersWidth = 30;
   ellipsis = '…';
   _backgroundColor = '#333';
-  _headerBackgroundColor = '#222';
+  _headerBackgroundColor = '#262626';
   textColor = '#efefef';
   dataStore = new DataStore({
     getRowId: (row, index) => this.getRowId(row, index),
@@ -149,9 +149,9 @@ class CanvasGridComponent extends HTMLElement {
     flashOutDuration: 400,
     flashRGB: '214, 144, 13',
     borderRightWidth: 1,
-    borderRightColor: '#3f3f3f',
+    borderRightColor: '#3b3b3b',
     borderBottomWidth: 1,
-    borderBottomColor: '#3f3f3f',
+    borderBottomColor: '#3b3b3b',
   });
 
   cellValueRenderer = new CellValueRenderer({
@@ -164,11 +164,11 @@ class CanvasGridComponent extends HTMLElement {
     layer: builtIn.header,
     font: this._headerFont,
     color: this.textColor,
-    background: '#222',
+    background: '#262626',
     borderRightWidth: 1,
-    borderRightColor: '#2f2f2f',
+    borderRightColor: '#333',
     borderBottomWidth: 1,
-    borderBottomColor: '#2f2f2f',
+    borderBottomColor: '#4a4a4a',
   });
 
   loadingIndicator: Loading;
@@ -369,6 +369,18 @@ class CanvasGridComponent extends HTMLElement {
     return this.textStyle.letterSpacing;
   }
 
+  /**
+   * What happens to text wider than its cell: `'clip'` (default) cuts it off at the cell edge and measures nothing,
+   * `'ellipsis'` shortens it and ends it with an ellipsis, which means measuring the text.
+   */
+  set textOverflow(textOverflow: TextStyle['textOverflow']) {
+    this.setTextStyle({ textOverflow });
+  }
+
+  get textOverflow() {
+    return this.textStyle.textOverflow;
+  }
+
   /** `'ltr'` (default), `'rtl'`, or `'auto'` to pick the direction per cell from its first letter. */
   set direction(direction: TextStyle['direction']) {
     this.setTextStyle({ direction });
@@ -400,18 +412,50 @@ class CanvasGridComponent extends HTMLElement {
     const debounceAfterScroll = debounce(() => {
       this.isScrolling = false;
     }, 200);
-    const throttledUpdate = throttle((scrollYOffset: number, scrollXOffset: number) => {
-      this.scrollXOffset = Math.round(scrollXOffset);
-      this.scrollYOffset = Math.round(scrollYOffset);
+    this.scrollArea.addEventListener('pointermove', this.onPointerMove);
+    this.scrollArea.addEventListener('pointerleave', this.onPointerLeave);
+    // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
+    this.scrollArea.addEventListener('scroll', () => {
+      this.isScrolling = true;
+      this.updateHoveredRow();
       debounceAfterScroll();
       this.requestRender();
-    }, 10);
-    this.scrollArea.addEventListener('scroll', () => {
-      const { scrollTop, scrollLeft } = this.scrollArea;
-      this.isScrolling = true;
-      throttledUpdate(scrollTop, scrollLeft);
     });
   }
+
+  /** Rows whose cells must be redrawn because the hover highlight moved off or onto them. */
+  private hoverDirty: (number | undefined)[] = [];
+
+  private setHoveredRow(index: number | undefined) {
+    const previous = this.cellBackgroundRenderer.hoveredRowIndex;
+    if (previous === index) return;
+
+    this.cellBackgroundRenderer.hover(index);
+    // added to, not replaced: the pointer can cross several rows before the next frame, and each needs its redraw
+    this.hoverDirty.push(previous, index);
+    this.requestRender();
+  }
+
+  /** Pointer position relative to the grid, kept to find the hovered row again after scrolling. */
+  private pointerY: number | undefined = undefined;
+
+  private updateHoveredRow() {
+    if (this.pointerY === undefined) return;
+
+    const y = this.pointerY - (this.showHeaders ? this.headerHeight : 0);
+    const index = this._dataCollection.indexAt(y + this.scrollArea.scrollTop);
+    this.setHoveredRow(y < 0 || index >= this._dataCollection.length ? undefined : index);
+  }
+
+  private readonly onPointerMove = (event: PointerEvent) => {
+    this.pointerY = event.clientY - this.getBoundingClientRect().top;
+    this.updateHoveredRow();
+  };
+
+  private readonly onPointerLeave = () => {
+    this.pointerY = undefined;
+    this.setHoveredRow(undefined);
+  };
 
   private fontsTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
@@ -455,13 +499,20 @@ class CanvasGridComponent extends HTMLElement {
 
   render() {
     this.animationFrame = undefined;
+    this.readScrollOffsets();
     const delta = new Date().valueOf() - this.lastRender;
-    if (delta < (1000 / this.fps)) {
+    // the frame cap is for animations; scrolling draws on every frame, or it would visibly lag behind the scrollbar
+    if (!this.isScrolling && delta < (1000 / this.fps)) {
       this.requestRender();
       return;
     }
     this.draw();
     this.updateLastRender();
+  }
+
+  private readScrollOffsets() {
+    this.scrollXOffset = Math.round(this.scrollArea.scrollLeft);
+    this.scrollYOffset = Math.round(this.scrollArea.scrollTop);
   }
 
   hasScrolled() {
@@ -613,7 +664,7 @@ class CanvasGridComponent extends HTMLElement {
           const refs = header.renderers ?? this.cellRenderers;
           const animating = this.isAnimating(refs);
           // an animation gets one last frame after it stops, so its final state is what stays on screen
-          if (redrawAll || valueChanged || animating || entry.animating) this.paintAll(refs);
+          if (redrawAll || valueChanged || animating || entry.animating || this.hoverDirty.includes(rowIndex)) this.paintAll(refs);
           entry.animating = animating;
           entry.value = value;
           entry.formatted = formatted;
@@ -624,6 +675,7 @@ class CanvasGridComponent extends HTMLElement {
     if (this.scrollYOffset > 0 || this.scrollXOffset > 0) {
       this.renderBrick();
     }
+    this.hoverDirty = [];
     this.prevScrollYOffset = this.scrollYOffset;
     this.prevScrollXOffset = this.scrollXOffset;
     if (keepDrawing) this.requestRender();

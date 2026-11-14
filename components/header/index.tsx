@@ -20,7 +20,7 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
   static readonly defaultOptions: HeaderOptions = {
     layer: 'header',
     background: '#333',
-    font: '13px monospace',
+    font: '13px sans-serif',
     color: '#fff',
     borderRightWidth: 1,
     borderRightColor: '#fff',
