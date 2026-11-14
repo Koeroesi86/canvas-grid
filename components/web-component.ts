@@ -369,6 +369,18 @@ class CanvasGridComponent extends HTMLElement {
     return this.textStyle.letterSpacing;
   }
 
+  /**
+   * What happens to text wider than its cell: `'clip'` (default) cuts it off at the cell edge and measures nothing,
+   * `'ellipsis'` shortens it and ends it with an ellipsis, which means measuring the text.
+   */
+  set textOverflow(textOverflow: TextStyle['textOverflow']) {
+    this.setTextStyle({ textOverflow });
+  }
+
+  get textOverflow() {
+    return this.textStyle.textOverflow;
+  }
+
   /** `'ltr'` (default), `'rtl'`, or `'auto'` to pick the direction per cell from its first letter. */
   set direction(direction: TextStyle['direction']) {
     this.setTextStyle({ direction });
