@@ -2,16 +2,16 @@
 const TICK_MS = 50;
 
 const columns = [
-  { id: 'symbol', displayName: 'Symbol', width: 90 },
-  { id: 'name', displayName: 'Company', width: 200 },
-  { id: 'sector', displayName: 'Sector', width: 130 },
-  { id: 'price', displayName: 'Price', width: 100 },
-  { id: 'change', displayName: 'Change', width: 100 },
-  { id: 'bid', displayName: 'Bid', width: 100 },
-  { id: 'ask', displayName: 'Ask', width: 100 },
-  { id: 'volume', displayName: 'Volume', width: 120 },
-  { id: 'high', displayName: 'High', width: 100 },
-  { id: 'low', displayName: 'Low', width: 100 },
+  { id: 'symbol', displayName: 'Symbol', width: 80 },
+  { id: 'name', displayName: 'Company', width: 190 },
+  { id: 'sector', displayName: 'Sector', width: 120 },
+  { id: 'price', displayName: 'Price', width: 90 },
+  { id: 'change', displayName: 'Change', width: 90 },
+  { id: 'bid', displayName: 'Bid', width: 90 },
+  { id: 'ask', displayName: 'Ask', width: 90 },
+  { id: 'volume', displayName: 'Volume', width: 110 },
+  { id: 'high', displayName: 'High', width: 90 },
+  { id: 'low', displayName: 'Low', width: 90 },
 ];
 
 const sectors = ['Energy', 'Finance', 'Health', 'Industrial', 'Materials', 'Retail', 'Tech', 'Utilities'];

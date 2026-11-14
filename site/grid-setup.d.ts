@@ -9,3 +9,6 @@ export const withColumnOptions: (columns: Array<{ id: string; displayName?: stri
 export const fontFamilies: Record<string, string>;
 export const applyFontFamily: (grid: CanvasGrid, family: string) => void;
 export const bindFontPicker: (select: HTMLSelectElement, grid: CanvasGrid) => void;
+
+/** Widens the row-number column to the digits of the last row number. */
+export const fitRowNumbers: (grid: CanvasGrid, rowCount: number) => void;

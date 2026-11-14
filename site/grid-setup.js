@@ -57,6 +57,11 @@ export const applyFontFamily = (grid, family) => {
   grid.refreshFonts?.();
 };
 
+/** Widens the row-number column to the digits of the last row number; text no longer ends in an ellipsis, it is cut. */
+export const fitRowNumbers = (grid, rowCount) => {
+  grid.rowNumbersWidth = Math.max(30, String(rowCount).length * 9 + 14);
+};
+
 /** Fonts, and the extra layer and renderer the change column uses. */
 export const configureGrid = grid => {
   grid.style.fontSize = '12px';

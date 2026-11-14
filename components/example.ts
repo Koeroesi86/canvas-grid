@@ -1,5 +1,5 @@
 import './web-component';
-import { bindFontPicker, configureGrid, formatNumber, parseSort, withColumnOptions } from '../site/grid-setup.js';
+import { bindFontPicker, configureGrid, fitRowNumbers, formatNumber, parseSort, withColumnOptions } from '../site/grid-setup.js';
 import type { RowInput } from './types';
 
 /** What `site/data-worker.js` posts: the columns and rows once, then batches of ticks. */
@@ -67,6 +67,7 @@ const init = () => {
   worker.addEventListener('message', ({ data }: MessageEvent<FeedMessage>) => {
     if (data.type === 'init') {
       feedColumns = data.columns;
+      fitRowNumbers(grid, data.rows.length);
       fittedWidth = 0;
       fitColumns();
       grid.setValues(data.rows);
