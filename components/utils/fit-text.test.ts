@@ -120,4 +120,32 @@ describe('fitText with measured widths', () => {
     expect(fitText('שלום עולם!', 50, '…', tenWide, { measure, sumIsExact: true })).toBe('שלום עולם!');
     expect(measure).toHaveBeenCalled();
   });
+
+  describe('with kerning pairs', () => {
+    /** "AV" is laid out 4px tighter than the two letters alone. */
+    const kerning = (left: string, right: string) => (left === 'A' && right === 'V' ? -4 : 0);
+    const kerned = (measure = vi.fn(tighter)) => ({ measure, kerning, sumIsExact: false });
+
+    it('keeps text that fits once the pairs are tightened, without measuring', () => {
+      const exact = kerned();
+      expect(fitText('AVAVAV', 50, '…', tenWide, exact)).toBe('AVAVAV');
+      expect(exact.measure).not.toHaveBeenCalled();
+    });
+
+    it('cuts at the corrected width and leaves room for the ellipsis', () => {
+      const exact = kerned();
+      expect(fitText('AVAVAVAV', 50, '…', tenWide, exact)).toBe('AVAV…');
+      expect(exact.measure).not.toHaveBeenCalled();
+    });
+
+    it('draws nothing when not even the ellipsis fits', () => {
+      expect(fitText('AVAVAVAV', 5, '…', tenWide, kerned())).toBe('');
+    });
+
+    it('still measures text that is not simple Latin', () => {
+      const exact = kerned(vi.fn((text: string) => text.length * 4));
+      expect(fitText('שלום עולם!', 50, '…', tenWide, exact)).toBe('שלום עולם!');
+      expect(exact.measure).toHaveBeenCalled();
+    });
+  });
 });

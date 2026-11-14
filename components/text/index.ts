@@ -43,6 +43,8 @@ export const defaultTextStyle: Readonly<TextStyle> = {
 interface FontMeasures {
   font: string;
   widths: Map<string, number>;
+  /** Kerning of the character pairs seen, by the two character codes. */
+  pairs: Map<number, number>;
   fitted: FitCache;
   probed: boolean;
   widthOf: (character: string) => number;
@@ -132,11 +134,17 @@ class TextRenderer extends Renderer<TextOptions> {
     const measures: FontMeasures = {
       font,
       widths: new Map(),
+      pairs: new Map(),
       fitted,
       probed: false,
       // passed to `fitText` as they are, so drawing a cell allocates no closures
       widthOf: character => this.measureCharacter(measures, character),
-      exactFit: { measure: text => this.measureString(measures, text), cache: fitted, sumIsExact: true },
+      exactFit: {
+        measure: text => this.measureString(measures, text),
+        cache: fitted,
+        sumIsExact: true,
+        kerning: (left, right) => this.measureKerning(measures, left, right),
+      },
     };
     this.fonts.set(font, measures);
     return measures;
@@ -169,6 +177,17 @@ class TextRenderer extends Renderer<TextOptions> {
     const width = this.measureContext.measureText(character).width;
     measures.widths.set(character, width);
     return width;
+  }
+
+  /** What a pair of characters is wider than the two alone, measured once per pair: negative for kerned pairs such as "AV". */
+  private measureKerning(measures: FontMeasures, left: string, right: string) {
+    const key = left.charCodeAt(0) * 0x10000 + right.charCodeAt(0);
+    const known = measures.pairs.get(key);
+    if (known !== undefined) return known;
+
+    const kerning = this.measureString(measures, left + right) - this.measureCharacter(measures, left) - this.measureCharacter(measures, right);
+    measures.pairs.set(key, kerning);
+    return kerning;
   }
 
   /** Width of a string as the browser lays it out: includes kerning, ligatures and joined scripts. */

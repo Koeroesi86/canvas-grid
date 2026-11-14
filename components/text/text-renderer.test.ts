@@ -235,4 +235,23 @@ describe('TextRenderer paint', () => {
     expect(ctx.fillText.mock.calls[0][0]).toBe('abcdef');
     measure.mockRestore();
   });
+
+  it('measures each character pair once and cuts kerned text without measuring whole cells', () => {
+    const ctx = createPaintContext();
+    const renderer = new TextRenderer({ font: '10px a' });
+    // "AV" is 4px tighter than its letters; every other pair adds up
+    const measure = vi.spyOn(fakeMeasureContext, 'measureText').mockImplementation((text: string) => ({
+      width: text === 'i' ? 4 : text.length * 8 - (text === 'AV' ? 4 : 0),
+    }) as TextMetrics);
+    const props = { value: '', x: 0, y: 0, height: 20, width: 56 };
+    renderer.paint(ctx as never, { ...props, value: 'AVAVAVAVAV' }, 0, 0);
+    expect(ctx.fillText.mock.calls[0][0]).toBe('AVAVAV…');
+    const wholeCells = () => measure.mock.calls.filter(([text]) => text.length > 2).length;
+    const pairs = () => measure.mock.calls.filter(([text]) => text.length === 2).length;
+    const measuredPairs = pairs();
+    renderer.paint(ctx as never, { ...props, value: 'AVAVAVAVAVAV' }, 0, 0);
+    expect(wholeCells()).toBe(0);
+    expect(pairs()).toBe(measuredPairs);
+    measure.mockRestore();
+  });
 });
