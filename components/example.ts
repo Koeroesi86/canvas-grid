@@ -61,7 +61,11 @@ const init = () => {
   };
 
   configureGrid(grid);
-  bindFontPicker(byId<HTMLSelectElement>('font'), grid);
+  // the row-number column follows the font, which changes how much room the columns have
+  bindFontPicker(byId<HTMLSelectElement>('font'), grid, () => {
+    fittedWidth = 0;
+    fitColumns();
+  });
   new ResizeObserver(fitColumns).observe(grid);
 
   worker.addEventListener('message', ({ data }: MessageEvent<FeedMessage>) => {

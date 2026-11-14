@@ -45,9 +45,30 @@ export const fontFamilies = {
 };
 
 /** Fills the font picker and applies its choice to the grid. */
-export const bindFontPicker = (select, grid) => {
+export const bindFontPicker = (select, grid, onChange) => {
   select.replaceChildren(...Object.entries(fontFamilies).map(([family, label]) => new Option(label, family)));
-  select.addEventListener('change', () => applyFontFamily(grid, select.value));
+  select.addEventListener('change', () => {
+    applyFontFamily(grid, select.value);
+    onChange?.();
+  });
+};
+
+/** The row count each grid shows, to size its row-number column again when the font changes. */
+const rowCounts = new WeakMap();
+
+const measureCanvas = document.createElement('canvas').getContext('2d');
+
+/** Sizes the row-number column to the widest number of the last row, in the font the numbers are drawn with. */
+export const fitRowNumbers = (grid, rowCount = rowCounts.get(grid) ?? 0) => {
+  rowCounts.set(grid, rowCount);
+  const digits = String(rowCount).length;
+  const font = grid.headerCellRenderer?.font;
+  if (!measureCanvas || !font) return;
+
+  measureCanvas.font = font;
+  // the widest digit decides, as proportional fonts differ in digit widths
+  const textWidth = Math.max(...'0123456789'.split('').map(digit => measureCanvas.measureText(digit.repeat(digits)).width));
+  grid.rowNumbersWidth = Math.ceil(textWidth) + grid.cellPadding.left + grid.cellPadding.right;
 };
 
 /** Sets the font family on the grid's CSS, which the grid inherits, and has it pick the change up. */
@@ -55,11 +76,8 @@ export const applyFontFamily = (grid, family) => {
   grid.style.fontFamily = family;
   // the published build may predate inheriting fonts, so tolerate its absence
   grid.refreshFonts?.();
-};
-
-/** Widens the row-number column to the digits of the last row number; text no longer ends in an ellipsis, it is cut. */
-export const fitRowNumbers = (grid, rowCount) => {
-  grid.rowNumbersWidth = Math.max(30, String(rowCount).length * 9 + 14);
+  fitRowNumbers(grid);
+  grid.resize?.();
 };
 
 /** Fonts, and the extra layer and renderer the change column uses. */
