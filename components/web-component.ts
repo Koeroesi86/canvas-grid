@@ -400,16 +400,11 @@ class CanvasGridComponent extends HTMLElement {
     const debounceAfterScroll = debounce(() => {
       this.isScrolling = false;
     }, 200);
-    const throttledUpdate = throttle((scrollYOffset: number, scrollXOffset: number) => {
-      this.scrollXOffset = Math.round(scrollXOffset);
-      this.scrollYOffset = Math.round(scrollYOffset);
+    // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
+    this.scrollArea.addEventListener('scroll', () => {
+      this.isScrolling = true;
       debounceAfterScroll();
       this.requestRender();
-    }, 10);
-    this.scrollArea.addEventListener('scroll', () => {
-      const { scrollTop, scrollLeft } = this.scrollArea;
-      this.isScrolling = true;
-      throttledUpdate(scrollTop, scrollLeft);
     });
   }
 
@@ -455,13 +450,20 @@ class CanvasGridComponent extends HTMLElement {
 
   render() {
     this.animationFrame = undefined;
+    this.readScrollOffsets();
     const delta = new Date().valueOf() - this.lastRender;
-    if (delta < (1000 / this.fps)) {
+    // the frame cap is for animations; scrolling draws on every frame, or it would visibly lag behind the scrollbar
+    if (!this.isScrolling && delta < (1000 / this.fps)) {
       this.requestRender();
       return;
     }
     this.draw();
     this.updateLastRender();
+  }
+
+  private readScrollOffsets() {
+    this.scrollXOffset = Math.round(this.scrollArea.scrollLeft);
+    this.scrollYOffset = Math.round(this.scrollArea.scrollTop);
   }
 
   hasScrolled() {
