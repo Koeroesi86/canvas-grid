@@ -167,6 +167,25 @@ describe('DataStore', () => {
     });
   });
 
+  describe('row heights', () => {
+    it('asks for the height once the values are stored, and skips rows that keep the default', () => {
+      const seen: unknown[] = [];
+      const tall = new DataStore({
+        getRowId: (row: RowInput) => row.id,
+        getCellHeight: () => 20,
+        getRowHeight: id => {
+          seen.push([id, tall.getValue(id, 'v')]);
+          return id === 2 ? 50 : undefined;
+        },
+      });
+      tall.setRows([{ id: 1, v: 'a' }, { id: 2, v: 'b' }]);
+      expect(seen).toEqual([[1, 'a'], [2, 'b']]);
+      expect(tall.rows.get(1)?.height).toBe(20);
+      expect(tall.rows.get(2)?.height).toBe(50);
+      expect(tall.rows.totalHeight).toBe(70);
+    });
+  });
+
   describe('sort model', () => {
     const rows = [
       { id: 1, name: 'pear', price: 3 },

@@ -36,6 +36,8 @@ Column object fields (`ColumnDefinition`):
 | `setSortModel(keys)` / `getSortModel()` | Orders the rows, see [Sorting](sorting.md). An empty list restores the original order |
 | `setColumnWidth(id, width)` | Sets a column's width in px, within its `minWidth` / `maxWidth` |
 | `autoSizeColumns(ids?)` | Fits the given columns (all by default) to their header and the rows in view, at most 500 of them, so it stays fast with any number of rows |
+| `setRowHeight(height \| fn)` | Sets every row's height: a number in px, also used for rows added later (it replaces `cellHeight`), or a function of the row id returning one. The function runs for existing rows now and for each added row once its values are stored, so `getRowData(id).values` works inside it. Replaces heights set for single rows. Fires no events |
+| `setRowHeightById(id, height)` | Sets one row's height (at least 8 px) and fires `rowresized`. It sticks to the row id through sorting, updates and `setValues` |
 | `getColumnState()` / `setColumnState(state)` | `[{ id, width }]` in display order; save the first and pass it to the second to restore widths. Unknown ids are skipped |
 | `refreshFonts()` | Re-reads inherited fonts and redraws. Call it after changing the CSS font while `font` / `headerFont` are `'inherit'`; loading web fonts does it automatically |
 | `forceDraw()` | Clears and redraws everything |
@@ -63,7 +65,7 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 | `showRowNumbers` | `true` | Show the row-number column |
 | `rowNumbersWidth` | `30` | Width of the row-number column |
 | `headerHeight` | `30` | Header row height |
-| `cellHeight` | `20` | Row height. Set it before `setValues`, it applies to rows as they are created |
+| `cellHeight` | `20` | Row height. Set it before `setValues`, it applies to rows as they are created; `setRowHeight(height)` also resizes existing rows |
 | `fps` | `60` | Maximum redraw rate; scrolling is not capped. Redraws only happen when something changed or animates |
 | `cellRenderers` | `['background', 'value']` | Renderers used by columns without their own `renderers` |
 | `flashInDuration` | `200` | Fade-in of the update flash in ms |
@@ -86,3 +88,14 @@ Drag the right border of a header to resize its column (a guide line follows the
 grid.addEventListener('columnresized', ({ detail }) => localStorage.setItem('columns', JSON.stringify(grid.getColumnState())));
 grid.setColumnState(JSON.parse(localStorage.getItem('columns') ?? '[]'));
 ```
+
+## Resizing rows
+
+Drag the bottom border of a row number to change that row's height; the row-number column must be shown (`showRowNumbers`). A guide line follows the pointer, and the cursor becomes `row-resize` over a border. The virtualised range and the vertical scroll extent update while dragging.
+
+| Event | When | `detail` |
+| --- | --- | --- |
+| `rowresizing` | While dragging, at most every 50 ms | `{ rowId, height, source: 'drag' }` |
+| `rowresized` | When a drag ends, and after `setRowHeightById` changes a row | `{ rowId, height, source: 'drag' \| 'api' }` |
+
+Heights are stored per row id, so a resized row keeps its height while the rows are sorted or updated. They are not part of `getColumnState()`.
