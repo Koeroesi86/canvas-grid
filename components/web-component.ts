@@ -17,7 +17,18 @@ import type { TextStyle } from './text';
 import { resolveFont } from './utils/inherited-font';
 import { borderAt, buildOffsets, clampWidth, columnAt } from './utils/column-layout';
 import { SORT_INDICATOR_AREA } from './sort-indicator';
-import SelectionModel, { dragScrollSpeed, rangeFor, resolve } from './utils/selection';
+import SelectionModel, {
+  columnLevel,
+  crossIndex,
+  dragScrollSpeed,
+  lineIndex,
+  linePosition,
+  lineRange,
+  rangeFor,
+  resolve,
+  rowLevel,
+} from './utils/selection';
+import type { Axis } from './utils/selection';
 import type { LayerOptions } from './utils/layer';
 import type {
   CellContext,
@@ -32,6 +43,7 @@ import type {
   RowId,
   RowInput,
   SelectionChangeDetail,
+  SelectionLevel,
   SelectionMode,
   SortDirection,
   SortKey,
@@ -184,10 +196,19 @@ interface PointerModifiers {
   additive: boolean;
 }
 
+/** What a press can select: a cell, a whole column (header), a whole row (row number), or everything (the corner). */
+type SelectionHit =
+  | { zone: 'cell'; row: number; column: number }
+  | { zone: 'column'; column: number }
+  | { zone: 'row'; row: number }
+  | { zone: 'all' };
+
 /** A selection being dragged out with the pointer, from `anchor` to wherever the pointer is. */
 interface SelectionDrag {
   pointerId: number;
   anchor: CellPosition;
+  /** Set when the drag started on column headers (`'column'`) or row numbers (`'row'`) and selects whole columns or rows. */
+  axis: Axis | undefined;
   /** Pointer position in client coordinates. */
   x: number;
   y: number;
@@ -200,7 +221,7 @@ interface TouchTap {
   pointerId: number;
   x: number;
   y: number;
-  cell: CellPosition;
+  hit: SelectionHit;
   modifiers: PointerModifiers;
 }
 
@@ -360,6 +381,7 @@ class CanvasGridComponent extends HTMLElement {
       valueChanged: false,
       forced: false,
       isScrolling: false,
+      selected: 'none',
       state: {},
     };
 
@@ -707,6 +729,7 @@ class CanvasGridComponent extends HTMLElement {
       age: Infinity,
       valueChanged: true,
       forced: true,
+      selected: 'none',
       state: this.placeholderState,
     }, overrides);
   }
@@ -745,7 +768,7 @@ class CanvasGridComponent extends HTMLElement {
     // the loading indicator animates until there is data
     let keepDrawing = this._dataCollection.length === 0;
 
-    if ((forced || this.hasXScrolled()) && this.showHeaders) {
+    if ((forced || this.hasXScrolled() || this.headersDirty) && this.showHeaders) {
       this.renderHeaders();
     }
 
@@ -784,7 +807,7 @@ class CanvasGridComponent extends HTMLElement {
 
       const { id: key, slot } = row;
 
-      if ((forced || this.hasYScrolled()) && this.showRowNumbers) {
+      if ((forced || this.hasYScrolled() || this.headersDirty) && this.showRowNumbers) {
         this.renderRowNumber(row, currentY);
       }
 
@@ -819,6 +842,7 @@ class CanvasGridComponent extends HTMLElement {
           cell.age = updatedAt === undefined ? Infinity : now - updatedAt;
           cell.valueChanged = valueChanged;
           cell.forced = redrawAll;
+          cell.selected = 'none';
           cell.state = entry.state;
           const refs = header.renderers ?? this.cellRenderers;
           const animating = this.isAnimating(refs);
@@ -837,6 +861,7 @@ class CanvasGridComponent extends HTMLElement {
     }
     this.hoverDirty = [];
     this.selectionDirty = false;
+    this.headersDirty = false;
     this.prevScrollYOffset = this.scrollYOffset;
     this.prevScrollXOffset = this.scrollXOffset;
     if (keepDrawing) this.requestRender();
@@ -869,6 +894,21 @@ class CanvasGridComponent extends HTMLElement {
 
   /** The selection must be drawn again on the next frame. */
   private selectionDirty = false;
+
+  /** The headers and row numbers must be drawn again, because the selection they show changed. */
+  private headersDirty = false;
+
+  /** How much of a column is selected, for its header. */
+  private columnSelection(index: number): SelectionLevel {
+    const { ranges } = this.selectionModel;
+    return ranges.length === 0 ? 'none' : columnLevel(ranges, index, this._dataCollection.length);
+  }
+
+  /** How much of a row is selected, for its row number. */
+  private rowSelection(index: number): SelectionLevel {
+    const { ranges } = this.selectionModel;
+    return ranges.length === 0 ? 'none' : rowLevel(ranges, index, this.columnList.length);
+  }
 
   /** Whether the selection layer holds anything, so a grid that never selects never clears it. */
   private selectionDrawn = false;
@@ -927,6 +967,7 @@ class CanvasGridComponent extends HTMLElement {
     this.describe(0, Math.ceil(y), this.rowNumbersWidth, row.height ?? 0, {
       row: { id: row.index, index: row.index },
       formatted: `${row.index + 1}`,
+      selected: this.rowSelection(row.index),
     });
     this.paint(builtIn.headerRenderer);
   }
@@ -1021,6 +1062,7 @@ class CanvasGridComponent extends HTMLElement {
       this.describe(x, 0, Math.round(header.width), this.headerHeight, {
         column: header,
         formatted: header.displayName ?? '',
+        selected: this.columnSelection(header.index),
       });
       this.paint(header.headerRenderer);
     });
@@ -1357,6 +1399,7 @@ class CanvasGridComponent extends HTMLElement {
     // a canvas is only worth its memory and compositing once something is selected
     if (this.selectionModel.ranges.length > 0 && !this.getLayer(builtIn.selection)) this.addLayer(builtIn.selection, { before: builtIn.header });
     this.selectionDirty = true;
+    this.headersDirty = true;
     this.requestRender();
     this.emitSelectionChange(selecting);
     const { active } = this.selectionModel;
@@ -1384,16 +1427,31 @@ class CanvasGridComponent extends HTMLElement {
     return { x: clientX - rect.left, y: clientY - rect.top, left, top };
   }
 
-  /** The cell under the pointer, or undefined over headers, row numbers, scrollbars and empty space. */
-  private cellAt(clientX: number, clientY: number): CellPosition | undefined {
-    const { x, y, left, top } = this.offsetsOf(clientX, clientY);
-    if (x < left || y < top || x > this.scrollArea.clientWidth || y > this.scrollArea.clientHeight) return undefined;
-
-    const contentX = x - left + this.scrollArea.scrollLeft;
-    const row = this._dataCollection.indexAt(y - top + this.scrollArea.scrollTop);
+  /** Index of the column at `contentX` px from the left of the first column, or undefined past the last one. */
+  private columnIndexAt(contentX: number) {
     const column = columnAt(this.columnOffsets, contentX);
-    const pastColumns = contentX >= this.columnOffsets[this.columnOffsets.length - 1];
-    return column < 0 || pastColumns || row >= this._dataCollection.length ? undefined : { row, column };
+    return column < 0 || contentX >= this.columnOffsets[this.columnOffsets.length - 1] ? undefined : column;
+  }
+
+  /** Index of the row at `contentY` px from the top of the first row, or undefined past the last one. */
+  private rowIndexAt(contentY: number) {
+    const row = this._dataCollection.indexAt(contentY);
+    return row >= this._dataCollection.length ? undefined : row;
+  }
+
+  /** What is under the pointer that a press can select: a cell, a column header, a row number or the corner. Scrollbars and empty space are nothing. */
+  private hitAt(clientX: number, clientY: number): SelectionHit | undefined {
+    const { x, y, left, top } = this.offsetsOf(clientX, clientY);
+    if (x < 0 || y < 0 || x > this.scrollArea.clientWidth || y > this.scrollArea.clientHeight) return undefined;
+
+    const inHeader = y < top;
+    const inRowNumbers = x < left;
+    const column = this.columnIndexAt(x - left + this.scrollArea.scrollLeft);
+    const row = this.rowIndexAt(y - top + this.scrollArea.scrollTop);
+    if (inHeader && inRowNumbers) return { zone: 'all' };
+    if (inHeader) return column === undefined ? undefined : { zone: 'column', column };
+    if (inRowNumbers) return row === undefined ? undefined : { zone: 'row', row };
+    return column === undefined || row === undefined ? undefined : { zone: 'cell', row, column };
   }
 
   /** The cell nearest to the pointer, wherever it is: dragging past an edge selects up to that edge. */
@@ -1406,6 +1464,13 @@ class CanvasGridComponent extends HTMLElement {
       row: Math.min(rows - 1, this._dataCollection.indexAt(Math.max(0, y - top) + this.scrollArea.scrollTop)),
       column: columnAt(this.columnOffsets, Math.max(0, x - left) + this.scrollArea.scrollLeft),
     };
+  }
+
+  /** The row and column a header selection that was just made starts from: those at the top left of the viewport. */
+  private firstVisible(axis: Axis) {
+    return axis === 'column'
+      ? this._dataCollection.indexAt(this.scrollArea.scrollTop)
+      : Math.max(0, columnAt(this.columnOffsets, this.scrollArea.scrollLeft));
   }
 
   /**
@@ -1426,9 +1491,62 @@ class CanvasGridComponent extends HTMLElement {
     return cell;
   }
 
-  private dragSelectTo({ x, y, anchor }: SelectionDrag) {
+  /**
+   * Applies a press on a column header or row number: it selects the whole column or row, shift extends from the active cell's,
+   * ctrl or cmd adds one. Returns the cell a drag from here starts at.
+   */
+  private pressLine(axis: Axis, index: number, { extend, additive }: PointerModifiers, selecting: boolean) {
+    const { selectionModel } = this;
+    const { active } = selectionModel;
+    if (extend && active) {
+      const range = lineRange(axis, lineIndex(axis, active), index);
+      const focus = linePosition(axis, index, crossIndex(axis, active));
+      this.changeSelection(() => (additive ? selectionModel.extend(range, focus) : selectionModel.set(range, active, focus)), selecting);
+      return { ...active };
+    }
+
+    const cell = linePosition(axis, index, this.firstVisible(axis));
+    const range = lineRange(axis, index, index);
+    this.changeSelection(() => (additive ? selectionModel.add(range, cell) : selectionModel.set(range, cell)), selecting);
+    return cell;
+  }
+
+  /** Selects everything, keeping the active cell. */
+  private selectEverything(selecting: boolean) {
+    const active = this.selectionModel.active ?? { row: this.firstVisible('column'), column: this.firstVisible('row') };
+    this.changeSelection(() => this.selectionModel.set({}, active), selecting);
+  }
+
+  /** Which modes a press in each part of the grid selects in; a column header does nothing when only rows can be selected, and so on. */
+  private static readonly ZONE_MODES: Record<SelectionHit['zone'], readonly SelectionMode[]> = {
+    cell: ['cell', 'range', 'row', 'column'],
+    column: ['range', 'column'],
+    row: ['range', 'row'],
+    all: ['range', 'row', 'column'],
+  };
+
+  /** Applies a press wherever it landed. Returns the drag it starts, or undefined when there is nothing to drag. */
+  private press(hit: SelectionHit, modifiers: PointerModifiers, selecting: boolean): Pick<SelectionDrag, 'anchor' | 'axis'> | undefined {
+    if (!CanvasGridComponent.ZONE_MODES[hit.zone].includes(this.mode)) return undefined;
+    if (hit.zone === 'all') {
+      this.selectEverything(selecting);
+      return undefined;
+    }
+    if (hit.zone === 'column') return { anchor: this.pressLine('column', hit.column, modifiers, selecting), axis: 'column' };
+    if (hit.zone === 'row') return { anchor: this.pressLine('row', hit.row, modifiers, selecting), axis: 'row' };
+    return { anchor: this.pressCell({ row: hit.row, column: hit.column }, modifiers, selecting), axis: undefined };
+  }
+
+  private dragSelectTo({ x, y, anchor, axis }: SelectionDrag) {
     const cell = this.nearestCell(x, y);
-    if (!cell || this.mode === 'cell') return;
+    if (!cell) return;
+
+    if (axis) {
+      const focus = linePosition(axis, lineIndex(axis, cell), crossIndex(axis, anchor));
+      this.changeSelection(() => this.selectionModel.extend(lineRange(axis, lineIndex(axis, anchor), lineIndex(axis, cell)), focus), true);
+      return;
+    }
+    if (this.mode === 'cell') return;
 
     const range = rangeFor(this.mode, anchor, cell);
     this.changeSelection(() => this.selectionModel.extend(range, cell), true);
@@ -1437,20 +1555,22 @@ class CanvasGridComponent extends HTMLElement {
   private readonly onSelectPointerDown = (event: PointerEvent) => {
     if (this.mode === 'none' || event.button !== 0 || this.resizeDrag) return;
 
-    const cell = this.cellAt(event.clientX, event.clientY);
-    if (!cell) return;
+    const hit = this.hitAt(event.clientX, event.clientY);
+    if (!hit) return;
 
     const modifiers = { extend: event.shiftKey, additive: event.ctrlKey || event.metaKey };
     if (event.pointerType === 'touch') {
       // a touch that moves scrolls, so it only selects when it ends where it started
-      this.touchTap = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, cell, modifiers };
+      this.touchTap = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, hit, modifiers };
       return;
     }
 
     event.preventDefault();
+    const drag = this.press(hit, modifiers, true);
+    if (!drag) return;
+
     this.scrollArea.setPointerCapture(event.pointerId);
-    const anchor = this.pressCell(cell, modifiers, true);
-    this.selectDrag = { pointerId: event.pointerId, anchor, x: event.clientX, y: event.clientY, frame: undefined };
+    this.selectDrag = { ...drag, pointerId: event.pointerId, x: event.clientX, y: event.clientY, frame: undefined };
   };
 
   private readonly onSelectPointerMove = (event: PointerEvent) => {
@@ -1471,8 +1591,9 @@ class CanvasGridComponent extends HTMLElement {
 
     drag.frame = undefined;
     const { x, y, left, top } = this.offsetsOf(drag.x, drag.y);
-    const dx = dragScrollSpeed(x, left, this.scrollArea.clientWidth);
-    const dy = dragScrollSpeed(y, top, this.scrollArea.clientHeight);
+    // a drag along the headers only follows the pointer across, and one along the row numbers only down
+    const dx = drag.axis === 'row' ? 0 : dragScrollSpeed(x, left, this.scrollArea.clientWidth);
+    const dy = drag.axis === 'column' ? 0 : dragScrollSpeed(y, top, this.scrollArea.clientHeight);
     if (dx === 0 && dy === 0) return;
 
     this.scrollArea.scrollBy(dx, dy);
@@ -1484,7 +1605,7 @@ class CanvasGridComponent extends HTMLElement {
     const { touchTap, selectDrag } = this;
     if (touchTap?.pointerId === event.pointerId) {
       this.touchTap = undefined;
-      if (event.type === 'pointerup') this.pressCell(touchTap.cell, touchTap.modifiers, false);
+      if (event.type === 'pointerup') this.press(touchTap.hit, touchTap.modifiers, false);
       return;
     }
     if (!selectDrag || selectDrag.pointerId !== event.pointerId) return;

@@ -1,4 +1,4 @@
-import type { CellPosition, CellRange, GridSelection, SelectionMode, Span } from '../types';
+import type { CellPosition, CellRange, GridSelection, SelectionLevel, SelectionMode, Span } from '../types';
 
 /** Furthest the grid scrolls per frame while a selection is dragged past its edge, in px. */
 export const DRAG_SCROLL_MAX = 30;
@@ -55,19 +55,44 @@ const coversAll = (value: Span | undefined, count: number) => value === undefine
 
 export const contains = (range: CellRange, row: number, column: number) => within(row, range.rows) && within(column, range.columns);
 
-/** How much of a column or row is selected: none of it, some of it, or all of it. */
-export type SelectionLevel = 'none' | 'partial' | 'full';
-
-const levelOf = (hits: readonly CellRange[], whole: (range: CellRange) => boolean): SelectionLevel => {
-  if (hits.length === 0) return 'none';
-  return hits.some(whole) ? 'full' : 'partial';
+/** How much of a column is selected. Row numbers are drawn on every scroll, so this allocates nothing. */
+export const columnLevel = (ranges: readonly CellRange[], column: number, rowCount: number): SelectionLevel => {
+  let level: SelectionLevel = 'none';
+  for (const range of ranges) {
+    if (!within(column, range.columns)) continue;
+    if (coversAll(range.rows, rowCount)) return 'full';
+    level = 'partial';
+  }
+  return level;
 };
 
-export const columnLevel = (ranges: readonly CellRange[], column: number, rowCount: number) =>
-  levelOf(ranges.filter(range => within(column, range.columns)), range => coversAll(range.rows, rowCount));
+/** How much of a row is selected. */
+export const rowLevel = (ranges: readonly CellRange[], row: number, columnCount: number): SelectionLevel => {
+  let level: SelectionLevel = 'none';
+  for (const range of ranges) {
+    if (!within(row, range.rows)) continue;
+    if (coversAll(range.columns, columnCount)) return 'full';
+    level = 'partial';
+  }
+  return level;
+};
 
-export const rowLevel = (ranges: readonly CellRange[], row: number, columnCount: number) =>
-  levelOf(ranges.filter(range => within(row, range.rows)), range => coversAll(range.columns, columnCount));
+/** Rows run down the grid and columns across it; a header selects a line of cells along one of them. */
+export type Axis = 'row' | 'column';
+
+/** A whole row or column, or a run of them from `from` to `to`. */
+export const lineRange = (axis: Axis, from: number, to: number): CellRange =>
+  axis === 'column' ? makeRange(undefined, span(from, to)) : makeRange(span(from, to), undefined);
+
+/** The cell at `index` along the axis and `cross` along the other. */
+export const linePosition = (axis: Axis, index: number, cross: number): CellPosition =>
+  axis === 'column' ? { row: cross, column: index } : { row: index, column: cross };
+
+/** The index of a position along the axis. */
+export const lineIndex = (axis: Axis, position: CellPosition) => (axis === 'column' ? position.column : position.row);
+
+/** The index of a position along the other axis. */
+export const crossIndex = (axis: Axis, position: CellPosition) => (axis === 'column' ? position.row : position.column);
 
 const sameSpan = (a: Span | undefined, b: Span | undefined) => a?.[0] === b?.[0] && a?.[1] === b?.[1];
 
@@ -97,8 +122,8 @@ class SelectionModel {
       || ranges.some((range, index) => !sameRange(range, this.ranges[index]))
       || !samePosition(active, this.active);
     this.ranges = ranges;
-    this.active = active && { ...active };
-    this.focus = focus && { ...focus };
+    this.active = active && { row: active.row, column: active.column };
+    this.focus = focus && { row: focus.row, column: focus.column };
     return changed;
   }
 

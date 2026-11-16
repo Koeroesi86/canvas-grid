@@ -42,6 +42,7 @@ A renderer is an object:
 | `valueChanged` | The formatted value differs from what was drawn last time |
 | `forced` | Everything is being redrawn (first draw, resize, scrolling) |
 | `isScrolling` | The grid is being scrolled |
+| `selected` | For headers and row numbers: `'none'`, `'partial'` or `'full'`, how much of the column or row is [selected](selection.md). Always `'none'` for data cells, whose selection is drawn on the `selection` layer |
 | `state` | Object that persists per cell between frames, for your own bookkeeping. Kept for the 2048 most recently drawn rows, so it resets for a row that was scrolled far away |
 
 A renderer that animates, for example a pulse that lasts one second after a change:

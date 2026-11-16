@@ -32,6 +32,7 @@ const createCell = (overrides: Partial<CellContext> = {}) => {
     valueChanged: false,
     forced: false,
     isScrolling: false,
+    selected: 'none',
     state: {},
     ...overrides,
   };

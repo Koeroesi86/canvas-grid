@@ -9,6 +9,10 @@ import type { CellContext, CellRenderer, SortDirection } from '../types';
 export interface HeaderOptions {
   layer: string;
   background: string;
+  /** Background of a header or row number with some of its cells selected. */
+  selectedBackground: string;
+  /** Background of a header or row number whose whole column or row is selected. */
+  fullySelectedBackground: string;
   font: string;
   color: string;
   borderRightWidth: number;
@@ -21,6 +25,8 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
   static readonly defaultOptions: HeaderOptions = {
     layer: 'header',
     background: '#333',
+    selectedBackground: '#2f3d4a',
+    fullySelectedBackground: '#3a5a7c',
     font: '13px sans-serif',
     color: '#fff',
     borderRightWidth: 1,
@@ -78,11 +84,19 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
     this.textRenderer.clearCache();
   }
 
-  draw({ ctx, x, y, width, height, column, formatted }: Readonly<CellContext>) {
+  private backgroundFor(selected: CellContext['selected']) {
+    if (selected === 'full') return this.options.fullySelectedBackground;
+    if (selected === 'partial') return this.options.selectedBackground;
+    return this.options.background;
+  }
+
+  draw({ ctx, x, y, width, height, column, formatted, selected }: Readonly<CellContext>) {
     if (width === 0 || height === 0) return;
 
     const direction = column === undefined ? undefined : this.sortDirections.get(String(column.id));
-    const { background, borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
+    const { borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
+
+    const background = this.backgroundFor(selected);
 
     (
       <Group>

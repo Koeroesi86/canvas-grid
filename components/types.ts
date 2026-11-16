@@ -47,6 +47,9 @@ export interface GridSelection {
   active: CellPosition | undefined;
 }
 
+/** How much of a column or row is selected: none of it, some of it, or all of it. */
+export type SelectionLevel = 'none' | 'partial' | 'full';
+
 /** How the user can select: not at all, one cell, ranges of cells (Excel-style), whole rows or whole columns. */
 export type SelectionMode = 'none' | 'cell' | 'range' | 'row' | 'column';
 
@@ -124,6 +127,11 @@ export interface CellContext {
   /** Everything has to be redrawn: first draw, resize or scrolling. */
   forced: boolean;
   isScrolling: boolean;
+  /**
+   * For a column header: how much of its column is selected; for a row number: how much of its row. Always `'none'` for data cells,
+   * whose selection is drawn on the `selection` layer.
+   */
+  selected: SelectionLevel;
   state: CellState;
 }
 
