@@ -80,6 +80,10 @@ class HeaderRenderer extends Renderer<HeaderOptions> implements CellRenderer {
     this.textRenderer.setStyle(style);
   }
 
+  optionsUpdated() {
+    this.textRenderer.color = this.options.color;
+  }
+
   clearCache() {
     this.textRenderer.clearCache();
   }

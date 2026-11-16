@@ -9,17 +9,17 @@ export interface CellBackgroundOptions {
   background: string;
   flashInDuration: number;
   flashOutDuration: number;
-  flashRGB: string;
+  flashColor: string;
+  /** Laid over odd rows. */
+  zebraColor: string;
+  /** Laid over the hovered row, faded in and out. */
+  hoverColor: string;
   borderRightWidth: number;
   borderRightColor: string;
   borderBottomWidth: number;
   borderBottomColor: string;
 }
 
-/** Lightens odd rows slightly, whatever the background is. */
-const ZEBRA_COLOR = '#fff';
-const ZEBRA_ALPHA = 0.025;
-const HOVER_ALPHA = 0.06;
 /** How long the hover highlight takes to fade in or out, in ms. */
 const HOVER_DURATION = 120;
 
@@ -44,7 +44,9 @@ class CellBackground extends Renderer<CellBackgroundOptions> implements CellRend
     background: '#333',
     flashInDuration: 200,
     flashOutDuration: 400,
-    flashRGB: '214, 144, 13',
+    flashColor: 'rgb(214, 144, 13)',
+    zebraColor: 'rgba(255, 255, 255, 0.025)',
+    hoverColor: 'rgba(255, 255, 255, 0.06)',
     borderRightWidth: 0,
     borderRightColor: '#fff',
     borderBottomWidth: 0,
@@ -115,16 +117,16 @@ class CellBackground extends Renderer<CellBackgroundOptions> implements CellRend
   }
 
   draw({ ctx, x, y, width, height, age, row, now }: Readonly<CellContext>) {
-    const { background, flashRGB, borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
+    const { background, flashColor, zebraColor, hoverColor, borderRightWidth, borderRightColor, borderBottomWidth, borderBottomColor } = this.options;
     const flash = this.getFlashAlpha(age);
-    const hover = row === undefined ? 0 : this.getHoverFraction(row.index, now) * HOVER_ALPHA;
+    const hover = row === undefined ? 0 : this.getHoverFraction(row.index, now);
 
     (
       <Group>
         <Rect width={width} height={height} color={background} />
-        {row !== undefined && row.index % 2 === 1 && <Rect width={width} height={height} color={ZEBRA_COLOR} alpha={ZEBRA_ALPHA} />}
-        {hover > 0 && <Rect width={width} height={height} color={ZEBRA_COLOR} alpha={hover} />}
-        {flash > 0 && <Rect width={width} height={height} color={`rgb(${flashRGB})`} alpha={flash} />}
+        {row !== undefined && row.index % 2 === 1 && <Rect width={width} height={height} color={zebraColor} />}
+        {hover > 0 && <Rect width={width} height={height} color={hoverColor} alpha={hover} />}
+        {flash > 0 && <Rect width={width} height={height} color={flashColor} alpha={flash} />}
         {borderRightWidth > 0 && <Rect x={width - borderRightWidth} width={borderRightWidth} height={height} color={borderRightColor} />}
         {borderBottomWidth > 0 && <Rect y={height - borderBottomWidth} width={width} height={borderBottomWidth} color={borderBottomColor} />}
       </Group>

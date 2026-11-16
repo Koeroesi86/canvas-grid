@@ -41,6 +41,7 @@ Column object fields (`ColumnDefinition`):
 | `getSelection()` / `setSelection(ranges, active?)` / `clearSelection()` | Read, replace and clear the selected ranges, see [Selection](selection.md) |
 | `copySelection()` / `contextMenuItems` | Copy the selection, and the entries of the right-click menu, see [Selection](selection.md#context-menu) |
 | `getColumnState()` / `setColumnState(state)` | `[{ id, width }]` in display order; save the first and pass it to the second to restore widths. Unknown ids are skipped |
+| `refreshTheme()` | Re-reads the `--cg-*` tokens and redraws if one changed. Runs by itself on a colour scheme, `theme`, `class`, `style` or `data-theme` change of the grid or an ancestor |
 | `refreshFonts()` | Re-reads inherited fonts and redraws. Call it after changing the CSS font while `font` / `headerFont` are `'inherit'`; loading web fonts does it automatically |
 | `forceDraw()` | Clears and redraws everything |
 | `registerRenderer(name, renderer)` | Makes a [renderer](renderers.md) available to columns by name; an existing name is replaced |
@@ -53,9 +54,11 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 
 ## Properties
 
+Colours, fonts and sizes default to the CSS theme tokens (`--cg-*`, light and dark); the options below win over them, see [Theming](theming.md).
+
 | Property | Default | Description |
 | --- | --- | --- |
-| `font` | `'12px sans-serif'` | Cell font (CSS font shorthand), or `'inherit'` to use the grid element's computed CSS font |
+| `font` | `'12px sans-serif'` | Cell font (`--cg-font`, see [Theming](theming.md)) (CSS font shorthand), or `'inherit'` to use the grid element's computed CSS font |
 | `headerFont` | `'13px sans-serif'` | Header font, `'inherit'` works as for `font` |
 | `textRendering` | `'auto'` | Canvas `textRendering` for cells and headers: `'optimizeSpeed'`, `'optimizeLegibility'` or `'geometricPrecision'` |
 | `fontKerning` | `'auto'` | Canvas `fontKerning`: `'normal'` or `'none'` |
@@ -65,6 +68,7 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 | `getRowId` | `(row) => row.id` | Derives the row id; assign your own to key rows differently |
 | `selectionMode` | `'none'` | What the user can select: `'cell'`, `'range'`, `'row'` or `'column'`, see [Selection](selection.md) |
 | `selectionColor` / `selectionBorderColor` | blue | Tint and outline of the selection; call `forceDraw()` after setting them |
+| `textColor` / `backgroundColor` / `headerBackgroundColor` | from the theme | Colours of text and backgrounds; they win over the CSS tokens, see [Theming](theming.md) |
 | `showHeaders` | `true` | Show the header row |
 | `showRowNumbers` | `true` | Show the row-number column |
 | `rowNumbersWidth` | `30` | Width of the row-number column |

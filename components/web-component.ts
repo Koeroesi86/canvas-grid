@@ -15,6 +15,8 @@ import CellValueRenderer from './cell-value';
 import { defaultTextStyle } from './text';
 import type { TextStyle } from './text';
 import { resolveFont } from './utils/inherited-font';
+import { createColorCheck, isCssFont, isSameTheme, readTheme, THEME_DEFAULTS } from './utils/theme';
+import type { Theme, ThemeName } from './utils/theme';
 import { borderAt, buildOffsets, clampWidth, columnAt } from './utils/column-layout';
 import { SORT_INDICATOR_AREA } from './sort-indicator';
 import SelectionModel, {
@@ -104,6 +106,18 @@ const injectStyles = () => {
   style.id = STYLE_ELEMENT_ID;
   style.textContent = styles;
   document.head.appendChild(style);
+};
+
+const parentOf = (element: Element) => {
+  const root = element.getRootNode();
+  return element.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+};
+
+/** The element and everything above it, out of shadow roots too. */
+const ancestorsOf = (element: Element) => {
+  const chain: Element[] = [];
+  for (let current: Element | null = element; current; current = parentOf(current)) chain.push(current);
+  return chain;
 };
 
 export interface ColumnHeader {
@@ -261,10 +275,12 @@ const DEFAULT_HEADER_FONT = '13px sans-serif';
 class CanvasGridComponent extends HTMLElement {
   /** Maximum redraw rate. */
   fps = 60;
-  _font = DEFAULT_FONT;
-  _headerFont = DEFAULT_HEADER_FONT;
-  headerHeight = 30;
-  cellHeight = 20;
+  /** Theme read from the CSS custom properties, `refreshTheme` keeps it current. Explicit options win over it. */
+  private theme: Theme = THEME_DEFAULTS.dark;
+  _font: string | undefined = undefined;
+  _headerFont: string | undefined = undefined;
+  _headerHeight: number | undefined = undefined;
+  _cellHeight: number | undefined = undefined;
   cellPadding = {
     top: 3,
     right: 3,
@@ -275,13 +291,59 @@ class CanvasGridComponent extends HTMLElement {
   showHeaders = true;
   rowNumbersWidth = 30;
   ellipsis = '…';
-  _backgroundColor = '#333';
-  _headerBackgroundColor = '#262626';
-  textColor = '#efefef';
+  private _backgroundColor: string | undefined = undefined;
+  private _headerBackgroundColor: string | undefined = undefined;
+  private _textColor: string | undefined = undefined;
   /** Tint of selected cells; set it, then call `forceDraw`. */
-  selectionColor = 'rgba(74, 144, 217, 0.25)';
+  selectionColor: string | undefined = undefined;
   /** Colour of the outline of a selection and of the border around the active cell. */
-  selectionBorderColor = '#4a90d9';
+  selectionBorderColor: string | undefined = undefined;
+
+  /** Cell background; set it to override `--cg-background`, `undefined` hands it back to the theme. */
+  get backgroundColor(): string {
+    return this._backgroundColor ?? this.theme.background;
+  }
+
+  set backgroundColor(color: string | undefined) {
+    this._backgroundColor = color;
+    this.applyTheme();
+  }
+
+  /** Header background; overrides `--cg-header-background`. An empty string hides the corner above the row numbers. */
+  get headerBackgroundColor(): string {
+    return this._headerBackgroundColor ?? this.theme.headerBackground;
+  }
+
+  set headerBackgroundColor(color: string | undefined) {
+    this._headerBackgroundColor = color;
+    this.applyTheme();
+  }
+
+  /** Text colour of cells and headers; overrides `--cg-text-color` and `--cg-header-text-color`. */
+  get textColor(): string {
+    return this._textColor ?? this.theme.text;
+  }
+
+  set textColor(color: string | undefined) {
+    this._textColor = color;
+    this.applyTheme();
+  }
+
+  get headerHeight() {
+    return this._headerHeight ?? this.theme.headerHeight;
+  }
+
+  set headerHeight(height: number) {
+    this._headerHeight = height;
+  }
+
+  get cellHeight() {
+    return this._cellHeight ?? this.theme.rowHeight;
+  }
+
+  set cellHeight(height: number) {
+    this._cellHeight = height;
+  }
   dataStore = new DataStore({
     getRowId: (row, index) => this.getRowId(row, index),
     getCellHeight: () => this.cellHeight,
@@ -313,32 +375,36 @@ class CanvasGridComponent extends HTMLElement {
 
   cellBackgroundRenderer = new CellBackground({
     layer: builtIn.background,
-    background: this._backgroundColor,
+    background: this.theme.background,
     enableFlashing: true,
     flashInDuration: 200,
     flashOutDuration: 400,
-    flashRGB: '214, 144, 13',
+    flashColor: this.theme.flash,
+    zebraColor: this.theme.zebra,
+    hoverColor: this.theme.hover,
     borderRightWidth: 1,
-    borderRightColor: '#3b3b3b',
+    borderRightColor: this.theme.border,
     borderBottomWidth: 1,
-    borderBottomColor: '#3b3b3b',
+    borderBottomColor: this.theme.border,
   });
 
   cellValueRenderer = new CellValueRenderer({
     layer: builtIn.content,
-    font: this._font,
-    color: this.textColor,
+    font: this.theme.font,
+    color: this.theme.text,
   });
 
   headerCellRenderer = new HeaderRenderer({
     layer: builtIn.header,
-    font: this._headerFont,
-    color: this.textColor,
-    background: '#262626',
+    font: this.theme.headerFont,
+    color: this.theme.headerText,
+    background: this.theme.headerBackground,
+    selectedBackground: this.theme.headerSelected,
+    fullySelectedBackground: this.theme.headerFullySelected,
     borderRightWidth: 1,
-    borderRightColor: '#333',
+    borderRightColor: this.theme.headerBorder,
     borderBottomWidth: 1,
-    borderBottomColor: '#4a4a4a',
+    borderBottomColor: this.theme.headerBottomBorder,
   });
 
   loadingIndicator: Loading;
@@ -491,7 +557,7 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   get font() {
-    return this._font;
+    return this._font ?? this.theme.font;
   }
 
   set headerFont(font: string) {
@@ -502,7 +568,7 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   get headerFont() {
-    return this._headerFont;
+    return this._headerFont ?? this.theme.headerFont;
   }
 
   private textStyle: TextStyle = { ...defaultTextStyle };
@@ -568,7 +634,9 @@ class CanvasGridComponent extends HTMLElement {
     this.appendChild(this.resizeGuide);
 
     this.updateLastRender();
+    this.refreshTheme();
     this.refreshFonts();
+    this.watchTheme();
     if (this.headers.length === 0) this.setColumns(Array(50).fill(1).map((_, index) => index));
 
     document.addEventListener('visibilitychange', this.onVisibilityChange);
@@ -660,13 +728,90 @@ class CanvasGridComponent extends HTMLElement {
    * while `font` / `headerFont` are `'inherit'`. Web fonts finishing to load trigger it too.
    */
   refreshFonts() {
-    this.cellValueRenderer.font = resolveFont(this._font, getComputedStyle(this), DEFAULT_FONT);
-    this.headerCellRenderer.font = resolveFont(this._headerFont, getComputedStyle(this), DEFAULT_HEADER_FONT);
+    this.cellValueRenderer.font = resolveFont(this.font, getComputedStyle(this), DEFAULT_FONT);
+    this.headerCellRenderer.font = resolveFont(this.headerFont, getComputedStyle(this), DEFAULT_HEADER_FONT);
     this.renderers.clearCaches();
     this.resize();
   }
 
   private readonly onFontsLoaded = () => this.refreshFonts();
+
+  private themeQuery: MediaQueryList | undefined = undefined;
+  private themeObserver: MutationObserver | undefined = undefined;
+  private colorCheck: ((value: string) => boolean) | undefined = undefined;
+
+  /** The `theme` attribute when it names a theme, else the colour scheme the page prefers. */
+  private get themeName(): ThemeName {
+    const attribute = this.getAttribute('theme');
+    if (attribute === 'light' || attribute === 'dark') return attribute;
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+
+  /**
+   * Re-reads the `--cg-*` custom properties and redraws when a value changed. Runs by itself when the colour scheme,
+   * the `theme` attribute or the `class`, `style` or `data-theme` attribute of the grid or an ancestor change;
+   * call it after changing the tokens any other way, such as a stylesheet rule that is toggled.
+   */
+  refreshTheme() {
+    const style = getComputedStyle(this);
+    this.colorCheck ??= createColorCheck(document.createElement('canvas').getContext('2d') ?? { fillStyle: '' });
+    const next = readTheme(this.themeName, {
+      read: token => style.getPropertyValue(token),
+      isColor: this.colorCheck,
+      isFont: isCssFont,
+    });
+    if (isSameTheme(next, this.theme)) return;
+
+    const sizeChanged = next.rowHeight !== this.theme.rowHeight || next.headerHeight !== this.theme.headerHeight;
+    this.theme = next;
+    if (sizeChanged) this.syncThemeHeights();
+    this.applyTheme();
+  }
+
+  /** Hands the theme, with the explicit options on top, to the renderers and redraws. */
+  private applyTheme() {
+    const { theme } = this;
+    this.cellBackgroundRenderer.update({
+      background: this.backgroundColor,
+      borderRightColor: theme.border,
+      borderBottomColor: theme.border,
+      zebraColor: theme.zebra,
+      hoverColor: theme.hover,
+      flashColor: theme.flash,
+    });
+    this.headerCellRenderer.update({
+      background: this.headerBackgroundColor,
+      color: this._textColor ?? theme.headerText,
+      selectedBackground: theme.headerSelected,
+      fullySelectedBackground: theme.headerFullySelected,
+      borderRightColor: theme.headerBorder,
+      borderBottomColor: theme.headerBottomBorder,
+    });
+    this.cellValueRenderer.color = this.textColor;
+    this.loadingIndicator.setColor(this.textColor);
+    this.refreshFonts();
+  }
+
+  /** Row heights follow `--cg-row-height` until `cellHeight`, `setRowHeight` or a drag sets them. */
+  private syncThemeHeights() {
+    if (this._cellHeight === undefined && this.rowHeightOf === undefined) this._dataCollection.setHeights(id => this.heightOfRow(id));
+    this.refreshRowHeights();
+    this.refreshScrollbar();
+  }
+
+  private readonly onThemeChange = () => this.refreshTheme();
+
+  private watchTheme() {
+    this.themeQuery = window.matchMedia('(prefers-color-scheme: light)');
+    this.themeQuery.addEventListener('change', this.onThemeChange);
+    this.themeObserver = new MutationObserver(this.onThemeChange);
+    ancestorsOf(this).forEach(element => this.themeObserver?.observe(element, { attributes: true, attributeFilter: ['class', 'style', 'theme', 'data-theme'] }));
+  }
+
+  private unwatchTheme() {
+    this.themeQuery?.removeEventListener('change', this.onThemeChange);
+    this.themeObserver?.disconnect();
+  }
 
   cancelRender() {
     if (this.animationFrame !== undefined) cancelAnimationFrame(this.animationFrame);
@@ -961,8 +1106,8 @@ class CanvasGridComponent extends HTMLElement {
     ctx.beginPath();
     ctx.rect(left, top, this.viewportWidth - left, this.viewportHeight - top);
     ctx.clip();
-    ctx.fillStyle = this.selectionColor;
-    ctx.strokeStyle = this.selectionBorderColor;
+    ctx.fillStyle = this.selectionColor ?? this.theme.selection;
+    ctx.strokeStyle = this.selectionBorderColor ?? this.theme.selectionBorder;
     ctx.lineWidth = 1;
     ranges.map(rectOf).forEach(rect => {
       if (!rect) return;
@@ -1066,7 +1211,7 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   renderBrick() {
-    if (this.showHeaders && this.showRowNumbers && this._headerBackgroundColor) {
+    if (this.showHeaders && this.showRowNumbers && this.headerBackgroundColor) {
       this.describe(0, 0, this.rowNumbersWidth, this.headerHeight, {});
       this.paint(builtIn.headerRenderer);
     }
@@ -1209,7 +1354,7 @@ class CanvasGridComponent extends HTMLElement {
     if (typeof height === 'function') this.rowHeightOf = height;
     else {
       this.rowHeightOf = undefined;
-      this.cellHeight = height;
+      this._cellHeight = height;
     }
     this._dataCollection.setHeights(id => this.heightOfRow(id));
     this.refreshRowHeights();
@@ -1991,6 +2136,7 @@ class CanvasGridComponent extends HTMLElement {
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.resizeObserver?.disconnect();
     this.pixelRatioQuery?.removeEventListener('change', this.watchPixelRatio);
+    this.unwatchTheme();
     document.fonts?.removeEventListener('loadingdone', this.onFontsLoaded);
     clearTimeout(this.fontsTimeout);
   }

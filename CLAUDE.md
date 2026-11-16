@@ -12,6 +12,7 @@ Read the relevant doc instead of guessing; update it when behaviour changes.
 - [docs/selection.md](docs/selection.md): selection modes, model, events
 - [docs/renderers.md](docs/renderers.md): renderer objects, `CellContext`, layers
 - [docs/ag-grid-adapter.md](docs/ag-grid-adapter.md): `agApi`
+- [docs/theming.md](docs/theming.md): `--cg-*` tokens, light and dark
 - [docs/typescript.md](docs/typescript.md): exported types
 - [docs/development.md](docs/development.md): scripts, demo site, releases, CI benchmark
 

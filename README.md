@@ -17,6 +17,7 @@ Live demo and feature overview: https://koeroesi86.github.io/canvas-grid/
 - [API reference](docs/api.md): data model, methods, properties
 - [Sorting](docs/sorting.md)
 - [Selection](docs/selection.md)
+- [Theming](docs/theming.md): CSS custom properties, light and dark
 - [Custom renderers and layers](docs/renderers.md)
 - [AG Grid-style adapter](docs/ag-grid-adapter.md)
 - [TypeScript](docs/typescript.md)
