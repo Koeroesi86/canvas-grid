@@ -39,6 +39,7 @@ Column object fields (`ColumnDefinition`):
 | `setRowHeight(height \| fn)` | Sets every row's height: a number in px, also used for rows added later (it replaces `cellHeight`), or a function of the row id returning one. The function runs for existing rows now and for each added row once its values are stored, so `getRowData(id).values` works inside it. Replaces heights set for single rows. Fires no events |
 | `setRowHeightById(id, height)` | Sets one row's height (at least 8 px) and fires `rowresized`. It sticks to the row id through sorting, updates and `setValues` |
 | `getSelection()` / `setSelection(ranges, active?)` / `clearSelection()` | Read, replace and clear the selected ranges, see [Selection](selection.md) |
+| `copySelection()` / `contextMenuItems` | Copy the selection, and the entries of the right-click menu, see [Selection](selection.md#context-menu) |
 | `getColumnState()` / `setColumnState(state)` | `[{ id, width }]` in display order; save the first and pass it to the second to restore widths. Unknown ids are skipped |
 | `refreshFonts()` | Re-reads inherited fonts and redraws. Call it after changing the CSS font while `font` / `headerFont` are `'inherit'`; loading web fonts does it automatically |
 | `forceDraw()` | Clears and redraws everything |

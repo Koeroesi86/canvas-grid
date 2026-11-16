@@ -19,6 +19,7 @@ import { borderAt, buildOffsets, clampWidth, columnAt } from './utils/column-lay
 import { SORT_INDICATOR_AREA } from './sort-indicator';
 import SelectionModel, {
   columnLevel,
+  contains,
   crossIndex,
   dragScrollSpeed,
   lineIndex,
@@ -32,6 +33,7 @@ import SelectionModel, {
 import type { Axis } from './utils/selection';
 import { moveTarget, revealOffset, stepWithin } from './utils/selection-navigation';
 import { toTsv } from './utils/clipboard';
+import ContextMenu from './utils/context-menu';
 import type { LayerOptions } from './utils/layer';
 import type {
   CellContext,
@@ -40,6 +42,8 @@ import type {
   CellRange,
   CellRenderer,
   CellState,
+  ContextMenuDetail,
+  ContextMenuItem,
   GridSelection,
   Key,
   RendererRef,
@@ -161,6 +165,8 @@ export type {
   CellRange,
   CellRenderer,
   CellState,
+  ContextMenuDetail,
+  ContextMenuItem,
   GridSelection,
   LayerOptions,
   RendererRef,
@@ -243,6 +249,7 @@ declare global {
     selectionchange: CustomEvent<SelectionChangeDetail>;
     cellfocus: CustomEvent<CellFocusDetail>;
     selectioncopy: CustomEvent<SelectionCopyDetail>;
+    gridcontextmenu: CustomEvent<ContextMenuDetail>;
   }
 }
 
@@ -593,8 +600,10 @@ class CanvasGridComponent extends HTMLElement {
     this.scrollArea.addEventListener('pointercancel', this.onSelectPointerEnd);
     this.addEventListener('keydown', this.onKeyDown);
     this.addEventListener('copy', this.onCopy);
+    this.addEventListener('contextmenu', this.onContextMenu);
     // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
     this.scrollArea.addEventListener('scroll', () => {
+      this.contextMenu?.close();
       this.isScrolling = true;
       this.updateHoveredRow();
       debounceAfterScroll();
@@ -1794,16 +1803,97 @@ class CanvasGridComponent extends HTMLElement {
     return { text, range: { ...range }, truncated };
   }
 
+  /** The selection as it is about to be copied, once `selectioncopy` let it through; undefined when there is nothing to copy or a listener cancelled. */
+  private requestCopy() {
+    const copied = this.mode === 'none' ? undefined : this.copiedSelection();
+    if (!copied) return undefined;
+
+    return this.dispatchEvent(new CustomEvent<SelectionCopyDetail>('selectioncopy', { detail: copied, cancelable: true })) ? copied : undefined;
+  }
+
   /** Puts the selection on the clipboard when the user copies. `selectioncopy` can change the text or cancel the copy. */
   private readonly onCopy = (event: ClipboardEvent) => {
-    const copied = this.mode === 'none' ? undefined : this.copiedSelection();
+    const copied = event.clipboardData && this.requestCopy();
     if (!copied || !event.clipboardData) return;
-
-    const custom = new CustomEvent<SelectionCopyDetail>('selectioncopy', { detail: copied, cancelable: true });
-    if (!this.dispatchEvent(custom)) return;
 
     event.clipboardData.setData('text/plain', copied.text);
     event.preventDefault();
+  };
+
+  /**
+   * Copies the newest selected range to the clipboard, as the copy shortcut does, `selectioncopy` included.
+   * Resolves to whether anything was copied. Browsers allow it from a user action only, such as a click.
+   */
+  async copySelection() {
+    const copied = this.requestCopy();
+    if (!copied) return false;
+
+    await navigator.clipboard.writeText(copied.text);
+    return true;
+  }
+
+  /** The entries of the context menu. Replace them to change the menu; an empty list keeps the browser's own menu. */
+  contextMenuItems: ContextMenuItem[] = [
+    { id: 'copy', label: 'Copy', disabled: () => this.selectionModel.ranges.length === 0, run: () => void this.copySelection() },
+  ];
+
+  private contextMenu: ContextMenu | undefined;
+
+  private menuDetail: ContextMenuDetail | undefined;
+
+  /** Whether a right click on this hit already has what it selects selected; those that do keep their selection. */
+  private isSelected(hit: SelectionHit) {
+    const { ranges } = this.selectionModel;
+    if (hit.zone === 'cell') return ranges.some(range => contains(range, hit.row, hit.column));
+    if (hit.zone === 'column') return columnLevel(ranges, hit.column, this._dataCollection.length) === 'full';
+    if (hit.zone === 'row') return rowLevel(ranges, hit.row, this.columnList.length) === 'full';
+    return ranges.some(range => shapeOf(range) === 'all');
+  }
+
+  /** Where the menu opens for a key press: the corner of the active cell, or of the grid's cells. */
+  private menuAnchor(): { x: number; y: number } {
+    const { x, y, left, top } = this.offsetsOf(0, 0);
+    const { active } = this.selectionModel;
+    if (!active) return { x: left - x, y: top - y };
+
+    return {
+      x: left - x + this.columnOffsets[active.column] - this.scrollArea.scrollLeft,
+      y: top - y + this._dataCollection.topOf(active.row + 1) - this.scrollArea.scrollTop,
+    };
+  }
+
+  /** Opens the context menu on a right click, a long press or the menu key, once `gridcontextmenu` let it. */
+  private readonly onContextMenu = (event: MouseEvent) => {
+    if (this.mode === 'none' || this.contextMenuItems.length === 0 || event.defaultPrevented) return;
+
+    // the menu key and Shift+F10 report no button 2, and a position that is not where the user is looking
+    const byPointer = event.button === 2;
+    const hit = byPointer ? this.hitAt(event.clientX, event.clientY) : undefined;
+    if (byPointer && !hit) return;
+
+    event.preventDefault();
+    this.focus({ preventScroll: true });
+    if (hit && !this.isSelected(hit)) this.press(hit, { extend: false, additive: false }, false);
+
+    const anchor = byPointer ? { x: event.clientX, y: event.clientY } : this.menuAnchor();
+    const active = this.selectionModel.active;
+    const detail: ContextMenuDetail = {
+      ...this.selectionModel.snapshot(),
+      ...anchor,
+      row: hit ? (hit.zone === 'cell' || hit.zone === 'row' ? hit.row : undefined) : active?.row,
+      column: hit ? (hit.zone === 'cell' || hit.zone === 'column' ? hit.column : undefined) : active?.column,
+      items: [...this.contextMenuItems],
+    };
+    if (!this.dispatchEvent(new CustomEvent<ContextMenuDetail>('gridcontextmenu', { detail, cancelable: true }))) return;
+    if (detail.items.length === 0) return;
+
+    this.menuDetail = detail;
+    this.contextMenu ??= new ContextMenu(this, id => this.menuDetail?.items.find(item => item.id === id)?.run(this.menuDetail));
+    this.contextMenu.open(detail.x, detail.y, detail.items.map(({ id, label, disabled }) => ({
+      id,
+      label,
+      disabled: typeof disabled === 'function' ? disabled(detail) : disabled ?? false,
+    })));
   };
 
   get totalHeight() {
