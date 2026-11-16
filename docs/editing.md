@@ -57,7 +57,7 @@ Updates arriving for the cell being edited are stored as usual and flash, but ne
 
 ## Custom editors
 
-A function receiving `{ rowId, rowIndex, columnId, columnIndex, value, initialText, commit, cancel }` and returning `{ element, getValue, focus?, destroy? }`. `element` goes over the cell and is focused (or `focus()` is called), `getValue()` supplies the value, which is validated but not parsed, and `commit()` / `cancel()` let the editor end itself.
+A function receiving `{ rowId, rowIndex, columnId, columnIndex, value, initialText, commit, cancel }` and returning `{ element, getValue, focus?, place?, destroy? }`. `place(visible)` is called each time the grid moves the editor, and with `false` while it is clipped out of sight, for parts outside `element` such as a popup. `element` goes over the cell and is focused (or `focus()` is called), `getValue()` supplies the value, which is validated but not parsed, and `commit()` / `cancel()` let the editor end itself.
 
 ```js
 const dateEditor = ({ value }) => {

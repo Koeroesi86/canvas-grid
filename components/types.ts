@@ -216,6 +216,8 @@ export interface CellEditorInstance {
   getValue(): unknown;
   /** Called instead of focusing `element`. */
   focus?(): void;
+  /** Called each time the grid moved the editor (scrolling, resizing), and with `false` while it is clipped out of sight; for parts that sit outside `element`, such as a popup. */
+  place?(visible: boolean): void;
   /** Called when editing ended, to clean up. */
   destroy?(): void;
 }

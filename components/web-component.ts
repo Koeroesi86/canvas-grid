@@ -2143,6 +2143,12 @@ class CanvasGridComponent extends HTMLElement {
     wrapper.style.background = this.backgroundColor;
     wrapper.style.color = this.textColor;
     wrapper.style.outlineColor = this.theme.selectionBorder;
+    // for parts that leave the wrapper, such as the dropdown's list in the top layer
+    wrapper.style.setProperty('--cg-editor-background', this.backgroundColor);
+    wrapper.style.setProperty('--cg-editor-text', this.textColor);
+    wrapper.style.setProperty('--cg-editor-border', this.theme.border);
+    wrapper.style.setProperty('--cg-editor-accent', this.theme.selectionBorder);
+    wrapper.style.setProperty('--cg-editor-highlight', this.theme.selection);
     wrapper.style.setProperty('--cg-editor-padding-left', `${this.cellPadding.left}px`);
     wrapper.style.setProperty('--cg-editor-padding-right', `${this.cellPadding.right}px`);
     wrapper.style.font = this.headers.get(columnId)?.font ?? this.font;
@@ -2265,6 +2271,7 @@ class CanvasGridComponent extends HTMLElement {
     // clipped rather than hidden, which would take the focus away
     style.clipPath = hidden ? 'inset(100%)' : `inset(${cut.top}px ${cut.right}px ${cut.bottom}px ${cut.left}px)`;
     style.pointerEvents = hidden ? 'none' : '';
+    edit.instance.place?.(!hidden);
   }
 
   /** Enter and Tab commit and move the selection on, Escape drops the edit; the keys stay inside the editor, which the grid would otherwise act on. */

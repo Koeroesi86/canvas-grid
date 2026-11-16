@@ -42,24 +42,121 @@ const createCheckboxEditor = ({ value }: CellEditorContext): CellEditorInstance 
 
 const toOption = (option: string | number | SelectOption): SelectOption => (typeof option === 'object' ? option : { value: option });
 
-/** A dropdown that opens at once and commits when an option is picked. A value outside the options is listed first, so leaving it alone keeps it. */
+/** Most rows the list shows before it scrolls, and the room it keeps from the window's edge, in px. */
+const LIST_MAX_HEIGHT = 240;
+const LIST_MARGIN = 8;
+
+/**
+ * A dropdown drawn by the grid, since the browser's own list cannot follow the theme and clips its text in short rows. It opens at once,
+ * arrows and typing move through the options, a click picks one and commits. The list sits in the top layer, so no cell or scroll area clips it.
+ * A value outside the options is listed first, so leaving it alone keeps it.
+ */
 const createSelectEditor = (options: readonly (string | number | SelectOption)[], { value, commit }: CellEditorContext): CellEditorInstance => {
   const listed = options.map(toOption);
   const entries = listed.some(entry => entry.value === value) ? listed : [{ value, label: asText(value) }, ...listed];
-  const select = document.createElement('select');
-  select.replaceChildren(...entries.map(({ value: optionValue, label }) => new Option(label ?? asText(optionValue))));
-  select.selectedIndex = Math.max(0, entries.findIndex(entry => entry.value === value));
-  select.addEventListener('change', commit);
+  const labelOf = (entry: SelectOption) => entry.label ?? asText(entry.value);
+  let index = Math.max(0, entries.findIndex(entry => entry.value === value));
+  let open = false;
+
+  const box = document.createElement('div');
+  box.className = 'cellSelect';
+  box.tabIndex = 0;
+  box.role = 'combobox';
+  box.ariaHasPopup = 'listbox';
+  const label = document.createElement('span');
+  label.className = 'cellSelectLabel';
+  const list = document.createElement('div');
+  list.className = 'cellSelectList';
+  list.role = 'listbox';
+  list.popover = 'manual';
+  box.append(label, list);
+
+  const items = entries.map((entry, position) => {
+    const item = document.createElement('div');
+    item.role = 'option';
+    item.textContent = labelOf(entry);
+    // the editor keeps the focus, or leaving it would commit
+    item.addEventListener('pointerdown', event => event.preventDefault());
+    item.addEventListener('click', () => {
+      choose(position);
+      commit();
+    });
+    return item;
+  });
+  list.append(...items);
+
+  function choose(position: number) {
+    index = position;
+    label.textContent = labelOf(entries[position]);
+    items.forEach((item, at) => {
+      item.classList.toggle('active', at === position);
+      item.ariaSelected = String(at === position);
+    });
+    items[position]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  const place = (visible: boolean) => {
+    const show = open && visible;
+    box.ariaExpanded = String(open);
+    if (show !== list.matches(':popover-open')) {
+      if (show) list.showPopover();
+      else list.hidePopover();
+    }
+    if (!show) return;
+
+    const rect = box.getBoundingClientRect();
+    const height = Math.min(list.scrollHeight, LIST_MAX_HEIGHT);
+    const below = window.innerHeight - rect.bottom - LIST_MARGIN;
+    const above = rect.top - LIST_MARGIN;
+    const upwards = height > below && above > below;
+    list.style.maxHeight = `${Math.min(LIST_MAX_HEIGHT, upwards ? above : below)}px`;
+    list.style.minWidth = `${rect.width}px`;
+    list.style.left = `${rect.left}px`;
+    list.style.top = `${upwards ? rect.top - Math.min(height, above) : rect.bottom}px`;
+    items[index]?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const typeAhead = (key: string) => {
+    const wanted = key.toLowerCase();
+    const order = [...entries.keys()].map((_, step) => (index + 1 + step) % entries.length);
+    const found = order.find(position => labelOf(entries[position]).toLowerCase().startsWith(wanted));
+    if (found !== undefined) choose(found);
+  };
+
+  box.addEventListener('pointerdown', event => {
+    // a press on an option is the option's, and closing the list now would swallow its click
+    if (event.target instanceof Node && list.contains(event.target)) return;
+
+    event.preventDefault();
+    box.focus({ preventScroll: true });
+    open = !open;
+    place(true);
+  });
+  box.addEventListener('keydown', event => {
+    const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+    const typed = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (step === undefined && !typed) return;
+
+    event.preventDefault();
+    open = true;
+    if (step === undefined) typeAhead(event.key);
+    else choose(Math.max(0, Math.min(entries.length - 1, index + step)));
+    place(true);
+  });
+
+  choose(index);
   return {
-    element: select,
-    getValue: () => entries[select.selectedIndex]?.value,
+    element: box,
+    getValue: () => entries[index]?.value,
     focus() {
-      select.focus({ preventScroll: true });
-      try {
-        select.showPicker();
-      } catch {
-        // needs a user action and browser support; the focused select still works from the keyboard
-      }
+      box.focus({ preventScroll: true });
+      open = true;
+      place(true);
+    },
+    place,
+    destroy() {
+      open = false;
+      place(false);
     },
   };
 };

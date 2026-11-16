@@ -70,7 +70,7 @@ canvas-grid {
     }
 
     /* text sits where the canvas draws it: the grid's cell padding from the left, centred vertically */
-    & > input:not([type="checkbox"]), & > select {
+    & > input:not([type="checkbox"]) {
       flex: 1;
       min-width: 0;
       height: 100%;
@@ -87,14 +87,33 @@ canvas-grid {
       font-variant-numeric: tabular-nums;
     }
 
-    /* the native control clips its text in short rows; the arrow is drawn instead */
-    & > select {
-      appearance: none;
+    & > .cellSelect {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      padding: 0 var(--cg-editor-padding-right, 3px) 0 var(--cg-editor-padding-left, 3px);
       cursor: pointer;
-      color-scheme: inherit;
-      padding-right: 18px;
-      background: linear-gradient(45deg, transparent 50%, currentColor 50%) right 9px center / 4px 4px no-repeat,
-        linear-gradient(-45deg, transparent 50%, currentColor 50%) right 5px center / 4px 4px no-repeat;
+      outline: 0;
+      position: relative;
+
+      /* the arrow */
+      &::after {
+        content: "";
+        margin-left: auto;
+        flex: none;
+        border: 4px solid transparent;
+        border-top-color: currentColor;
+        border-bottom-width: 0;
+      }
+
+      & > .cellSelectLabel {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
     }
 
     & > input[type="checkbox"] {
@@ -167,3 +186,36 @@ canvas-grid .contextMenu {
     }
   }
 }
+
+.cellSelectList {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 2px 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: var(--cg-editor-background, #333);
+  color: var(--cg-editor-text, #efefef);
+  font: inherit;
+  border: 1px solid var(--cg-editor-border, #555);
+  outline: 1px solid var(--cg-editor-accent, #4a90d9);
+  outline-offset: -1px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  scrollbar-width: thin;
+
+  & > [role="option"] {
+    padding: 3px 8px;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--cg-editor-highlight, rgba(74, 144, 217, 0.25));
+    }
+
+    &.active {
+      background: var(--cg-editor-accent, #4a90d9);
+      color: var(--cg-editor-background, #333);
+    }
+  }
+}
+
