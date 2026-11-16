@@ -2138,6 +2138,7 @@ class CanvasGridComponent extends HTMLElement {
     });
     const wrapper = document.createElement('div');
     wrapper.className = 'cellEditor';
+    wrapper.style.colorScheme = this.themeName;
     wrapper.append(instance.element);
     wrapper.addEventListener('keydown', this.onEditorKeyDown);
     wrapper.addEventListener('focusout', this.onEditorFocusOut);

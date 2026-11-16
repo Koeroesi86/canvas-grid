@@ -80,6 +80,17 @@ canvas-grid {
       padding: 0 6px;
     }
 
+    & > input.number {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    & > select {
+      cursor: pointer;
+      /* the popup list follows the theme, set on the editor by the grid */
+      color-scheme: inherit;
+    }
+
     & > input[type="checkbox"] {
       margin: auto;
     }

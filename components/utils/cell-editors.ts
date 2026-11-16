@@ -8,19 +8,30 @@ const createInput = (type: string) => {
   return input;
 };
 
-/** A text or number box: starts with the key that opened it, or with the value selected. */
-const createTextEditor = (type: 'text' | 'number', { value, initialText }: CellEditorContext): CellEditorInstance => {
-  const input = createInput(type);
+/** Selects the whole text, or puts the caret after the key that opened the editor. */
+const focusText = (input: HTMLInputElement, typed: boolean) => {
+  input.focus({ preventScroll: true });
+  if (typed) input.setSelectionRange(input.value.length, input.value.length);
+  else input.select();
+};
+
+const createTextEditor = ({ value, initialText }: CellEditorContext): CellEditorInstance => {
+  const input = createInput('text');
   input.value = initialText ?? asText(value);
-  return {
-    element: input,
-    getValue: () => input.value,
-    focus() {
-      input.focus({ preventScroll: true });
-      if (initialText === undefined) input.select();
-      else input.setSelectionRange(input.value.length, input.value.length);
-    },
-  };
+  return { element: input, getValue: () => input.value, focus: () => focusText(input, initialText !== undefined) };
+};
+
+/**
+ * A text box with the numeric keypad on touch screens and right-aligned digits. It is not `type="number"`, which hides what was typed when it
+ * is not a number (so a typo would clear the cell), steps on arrow keys and wheel, and shows spin buttons; the parser reports a bad number instead.
+ */
+const createNumberEditor = ({ value, initialText }: CellEditorContext): CellEditorInstance => {
+  const input = createInput('text');
+  input.inputMode = 'decimal';
+  input.autocomplete = 'off';
+  input.classList.add('number');
+  input.value = initialText ?? asText(value);
+  return { element: input, getValue: () => input.value, focus: () => focusText(input, initialText !== undefined) };
 };
 
 const createCheckboxEditor = ({ value }: CellEditorContext): CellEditorInstance => {
@@ -31,18 +42,32 @@ const createCheckboxEditor = ({ value }: CellEditorContext): CellEditorInstance 
 
 const toOption = (option: string | number | SelectOption): SelectOption => (typeof option === 'object' ? option : { value: option });
 
-const createSelectEditor = (options: readonly (string | number | SelectOption)[], { value }: CellEditorContext): CellEditorInstance => {
-  const entries = options.map(toOption);
+/** A dropdown that opens at once and commits when an option is picked. A value outside the options is listed first, so leaving it alone keeps it. */
+const createSelectEditor = (options: readonly (string | number | SelectOption)[], { value, commit }: CellEditorContext): CellEditorInstance => {
+  const listed = options.map(toOption);
+  const entries = listed.some(entry => entry.value === value) ? listed : [{ value, label: asText(value) }, ...listed];
   const select = document.createElement('select');
   select.replaceChildren(...entries.map(({ value: optionValue, label }) => new Option(label ?? asText(optionValue))));
   select.selectedIndex = Math.max(0, entries.findIndex(entry => entry.value === value));
-  return { element: select, getValue: () => entries[select.selectedIndex]?.value, focus: () => select.focus({ preventScroll: true }) };
+  select.addEventListener('change', commit);
+  return {
+    element: select,
+    getValue: () => entries[select.selectedIndex]?.value,
+    focus() {
+      select.focus({ preventScroll: true });
+      try {
+        select.showPicker();
+      } catch {
+        // needs a user action and browser support; the focused select still works from the keyboard
+      }
+    },
+  };
 };
 
 const createBuiltIn = (editor: BuiltInCellEditor, context: CellEditorContext) => {
   if (editor === 'checkbox') return createCheckboxEditor(context);
   if (typeof editor === 'object') return createSelectEditor(editor.options, context);
-  return createTextEditor(editor, context);
+  return editor === 'number' ? createNumberEditor(context) : createTextEditor(context);
 };
 
 /** Builds the editor a column asks for; a column without one edits text. */
