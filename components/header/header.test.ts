@@ -12,7 +12,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const createCell = (columnId: string): CellContext => {
+const createCell = (columnId: string, overrides: Partial<CellContext> = {}): CellContext => {
   const ctx = {
     fillRect: vi.fn(),
     fillText: vi.fn(),
@@ -45,7 +45,9 @@ const createCell = (columnId: string): CellContext => {
     valueChanged: true,
     forced: true,
     isScrolling: false,
+    selected: 'none',
     state: {},
+    ...overrides,
   };
 };
 
@@ -84,5 +86,22 @@ describe('HeaderRenderer sort indicator', () => {
     const clipWidth = (cell.ctx.rect as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[2] as number | undefined;
     // the 17-character title is 136px wide, so it is clipped; the clip ends before the arrow's area
     expect(clipWidth).toBeLessThanOrEqual(100 - 18 - 6);
+  });
+});
+
+describe('HeaderRenderer selection', () => {
+  const background = (renderer: HeaderRenderer, selected: CellContext['selected']) => {
+    const cell = createCell('price', { selected });
+    const fills: string[] = [];
+    Object.defineProperty(cell.ctx, 'fillStyle', { set: (value: string) => fills.push(value), get: () => '' });
+    renderer.draw(cell);
+    return fills[0];
+  };
+
+  it('fills a header with the colour for how much of its column is selected', () => {
+    const renderer = new HeaderRenderer({ background: '#111', selectedBackground: '#222', fullySelectedBackground: '#333' });
+    expect(background(renderer, 'none')).toBe('#111');
+    expect(background(renderer, 'partial')).toBe('#222');
+    expect(background(renderer, 'full')).toBe('#333');
   });
 });

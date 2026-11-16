@@ -23,9 +23,14 @@ grid.addEventListener('selectionchange', ({ detail }) => console.log(detail.rang
 - **Shift+click** extends from the active cell to the clicked one, replacing the other ranges
 - **Ctrl or cmd+click** adds a range, so non-adjacent cells can be selected. Shift+ctrl+click extends the newest range instead
 - **Drag** from a cell to select a block. Dragging past the edge of the grid scrolls it, faster the further the pointer is outside, and the selection follows
+- **Click a column header** (modes `'range'` and `'column'`) to select the whole column. Shift+click extends to a range of columns from the active cell's, ctrl or cmd+click adds a column, and dragging across the headers selects several. The active cell becomes the one at the top of the column in view
+- **Click a row number** (modes `'range'` and `'row'`) to select the whole row, the same way. The row-number column has to be shown (`showRowNumbers`)
+- **Click the corner** (where headers and row numbers meet; every mode but `'cell'`) to select everything. The active cell stays
 - **Touch**: a tap selects; a drag still scrolls the grid
 
-The grid does not scroll on a click, only while dragging.
+Pressing on the border of a header or row number still resizes it, see [resizing](api.md#resizing-columns). Headers do not sort when clicked; sorting is `setSortModel`.
+
+The grid does not scroll on a click, only while dragging. Dragging along the headers scrolls sideways only, and along the row numbers vertically only.
 
 ## Model
 
@@ -49,6 +54,8 @@ The active cell is where keyboard moves start; it is drawn with a border and wit
 ## Drawing
 
 Selection has a layer of its own (`selection`, between `content` and `header`), created the first time something is selected, so a grid that never selects carries no extra canvas. Each range is drawn as one tinted rectangle with an outline, however many cells it covers, and the active cell as a thicker border. It is redrawn only when the selection, the scroll position or the layout changes.
+
+Headers and row numbers show what is selected: a column header whose column has some selected cells is drawn with `selectedBackground`, and with `fullySelectedBackground` when the whole column is selected (a whole-column range, or ranges covering every row); row numbers work the same for rows. Both are options of the header renderer; custom header renderers read `cell.selected` (`'none'`, `'partial'` or `'full'`, see [renderers](renderers.md)).
 
 | Property | Default | Description |
 | --- | --- | --- |

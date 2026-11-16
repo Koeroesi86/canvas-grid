@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import SelectionModel, {
   columnLevel,
   contains,
+  crossIndex,
   DRAG_SCROLL_MAX,
   dragScrollSpeed,
+  lineIndex,
+  linePosition,
+  lineRange,
   normalizeRange,
   rangeBetween,
   rangeFor,
@@ -75,6 +79,26 @@ describe('header levels', () => {
     expect(rowLevel([{ rows: [5, 6] }], 5, 4)).toBe('full');
     expect(rowLevel([{ rows: [5, 6], columns: [0, 1] }], 5, 4)).toBe('partial');
     expect(rowLevel([{ rows: [5, 6], columns: [0, 3] }], 6, 4)).toBe('full');
+  });
+});
+
+describe('lines', () => {
+  it('builds a whole column or row, or a run of them', () => {
+    expect(lineRange('column', 5, 2)).toEqual({ columns: [2, 5] });
+    expect(lineRange('row', 3, 3)).toEqual({ rows: [3, 3] });
+  });
+
+  it('places a position along an axis and across it', () => {
+    expect(linePosition('column', 4, 9)).toEqual({ row: 9, column: 4 });
+    expect(linePosition('row', 4, 9)).toEqual({ row: 4, column: 9 });
+  });
+
+  it('reads a position along an axis and across it', () => {
+    const position = { row: 7, column: 2 };
+    expect(lineIndex('column', position)).toBe(2);
+    expect(lineIndex('row', position)).toBe(7);
+    expect(crossIndex('column', position)).toBe(7);
+    expect(crossIndex('row', position)).toBe(2);
   });
 });
 
