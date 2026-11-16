@@ -102,10 +102,20 @@ export const configureGrid = grid => {
 /** The symbol column keeps its own font whatever the font picker says, to show per-column fonts. */
 const symbolFont = '600 12px ui-monospace, Menlo, Consolas, monospace';
 
+const sectors = ['Energy', 'Finance', 'Health', 'Industrial', 'Materials', 'Retail', 'Tech', 'Utilities'];
+
+/** Columns the demo lets you edit (double-click, F2 or just type): a text, a select and a number. */
+const editors = {
+  name: { editable: true },
+  sector: { editable: true, cellEditor: { type: 'select', options: sectors } },
+  price: { editable: true, cellEditor: 'number', validator: value => (typeof value === 'number' && value >= 0) || 'Enter a price of 0 or more' },
+};
+
 /** Adds the formatters and the trend renderer to the columns the feed describes. */
 export const withColumnOptions = columns => columns.map(column => ({
   ...column,
   ...(formatters[column.id] && { valueFormatter: formatters[column.id] }),
+  ...editors[column.id],
   ...(column.id === 'symbol' && { font: symbolFont }),
   ...(column.id === 'change' && { renderers: ['background', 'value', 'trend'] }),
 }));
