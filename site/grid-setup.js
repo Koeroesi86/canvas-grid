@@ -11,6 +11,7 @@ const formatters = {
   low: value => Number(value).toFixed(2),
   change: value => `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(2)}%`,
   volume: value => format.format(Number(value)),
+  watch: value => (value ? '✓' : ''),
 };
 
 // A small bar under the change value: green for a gain, red for a loss, longer for bigger moves.
@@ -104,10 +105,11 @@ const symbolFont = '600 12px ui-monospace, Menlo, Consolas, monospace';
 
 const sectors = ['Energy', 'Finance', 'Health', 'Industrial', 'Materials', 'Retail', 'Tech', 'Utilities'];
 
-/** Columns the demo lets you edit (double-click, F2 or just type): a text, a select and a number. */
+/** Columns the demo lets you edit (double-click, F2 or just type): a text, a select, a checkbox and a number. */
 const editors = {
   name: { editable: true },
   sector: { editable: true, cellEditor: { type: 'select', options: sectors } },
+  watch: { editable: true, cellEditor: 'checkbox' },
   price: { editable: true, cellEditor: 'number', validator: value => (typeof value === 'number' && value >= 0) || 'Enter a price of 0 or more' },
 };
 
