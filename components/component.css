@@ -66,29 +66,35 @@ canvas-grid {
     outline-offset: -2px;
 
     &.invalid {
-      outline-color: var(--cg-invalid-color, #d9534f);
+      outline-color: var(--cg-invalid-color, #d9534f) !important;
     }
 
+    /* text sits where the canvas draws it: the grid's cell padding from the left, centred vertically */
     & > input:not([type="checkbox"]), & > select {
       flex: 1;
       min-width: 0;
+      height: 100%;
       border: 0;
       outline: 0;
       background: transparent;
       color: inherit;
       font: inherit;
-      padding: 0 6px;
+      line-height: normal;
+      padding: 0 var(--cg-editor-padding-right, 3px) 0 var(--cg-editor-padding-left, 3px);
     }
 
     & > input.number {
-      text-align: right;
       font-variant-numeric: tabular-nums;
     }
 
+    /* the native control clips its text in short rows; the arrow is drawn instead */
     & > select {
+      appearance: none;
       cursor: pointer;
-      /* the popup list follows the theme, set on the editor by the grid */
       color-scheme: inherit;
+      padding-right: 18px;
+      background: linear-gradient(45deg, transparent 50%, currentColor 50%) right 9px center / 4px 4px no-repeat,
+        linear-gradient(-45deg, transparent 50%, currentColor 50%) right 5px center / 4px 4px no-repeat;
     }
 
     & > input[type="checkbox"] {

@@ -2139,6 +2139,13 @@ class CanvasGridComponent extends HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'cellEditor';
     wrapper.style.colorScheme = this.themeName;
+    // the resolved theme, which also covers a page that sets the theme by option rather than by CSS
+    wrapper.style.background = this.backgroundColor;
+    wrapper.style.color = this.textColor;
+    wrapper.style.outlineColor = this.theme.selectionBorder;
+    wrapper.style.setProperty('--cg-editor-padding-left', `${this.cellPadding.left}px`);
+    wrapper.style.setProperty('--cg-editor-padding-right', `${this.cellPadding.right}px`);
+    wrapper.style.font = this.headers.get(columnId)?.font ?? this.font;
     wrapper.append(instance.element);
     wrapper.addEventListener('keydown', this.onEditorKeyDown);
     wrapper.addEventListener('focusout', this.onEditorFocusOut);

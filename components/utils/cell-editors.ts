@@ -22,7 +22,7 @@ const createTextEditor = ({ value, initialText }: CellEditorContext): CellEditor
 };
 
 /**
- * A text box with the numeric keypad on touch screens and right-aligned digits. It is not `type="number"`, which hides what was typed when it
+ * A text box with the numeric keypad on touch screens, aligned like the cell it covers. It is not `type="number"`, which hides what was typed when it
  * is not a number (so a typo would clear the cell), steps on arrow keys and wheel, and shows spin buttons; the parser reports a bad number instead.
  */
 const createNumberEditor = ({ value, initialText }: CellEditorContext): CellEditorInstance => {
