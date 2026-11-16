@@ -52,6 +52,48 @@ describe('RowStore', () => {
     });
   });
 
+  describe('heights', () => {
+    it('moves the rows below a resized row, and reports whether anything changed', () => {
+      expect(store.setHeight(1, 50)).toBe(true);
+      expect(store.get(1)?.height).toBe(50);
+      expect(store.topOf(2)).toBe(70);
+      expect(store.totalHeight).toBe(130);
+      expect(store.setHeight(1, 50)).toBe(false);
+      expect(store.setHeight(99, 10)).toBe(false);
+      expect(store.indexAt(69)).toBe(1);
+      expect(store.indexAt(70)).toBe(2);
+    });
+
+    it('sets all heights at once from the row id', () => {
+      store.setHeights(id => (Number(id) + 1) * 10);
+      expect(store.totalHeight).toBe(150);
+      expect(store.topOf(3)).toBe(60);
+    });
+
+    it('keeps a row height through sorting', () => {
+      store.setHeight(0, 50);
+      store.sort((a, b) => Number(b.id) - Number(a.id));
+      expect(store.at(4)?.height).toBe(50);
+      expect(store.topOf(4)).toBe(80);
+    });
+  });
+
+  describe('borderAt', () => {
+    it('finds the row whose bottom border is within reach', () => {
+      expect(store.borderAt(40, 4)).toBe(1);
+      expect(store.borderAt(37, 4)).toBe(1);
+      expect(store.borderAt(43, 4)).toBe(1);
+      expect(store.borderAt(100, 4)).toBe(4);
+      expect(store.borderAt(30, 4)).toBe(-1);
+      expect(store.borderAt(0, 4)).toBe(-1);
+    });
+
+    it('prefers the nearer border and handles an empty store', () => {
+      expect(store.borderAt(41, 30)).toBe(1);
+      expect(new RowStore().borderAt(0, 4)).toBe(-1);
+    });
+  });
+
   describe('removeMany', () => {
     it('removes rows, renumbers the positions after them and returns the removed slots', () => {
       expect(store.removeMany([3, 1])).toEqual([1, 3]);

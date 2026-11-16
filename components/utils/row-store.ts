@@ -91,6 +91,36 @@ class RowStore {
     return added;
   }
 
+  /** Sets one row's height and moves the rows below it; returns whether anything changed. Costs the rows after it. */
+  setHeight(id: Key, height: number) {
+    const row = this.get(id);
+    if (!row || row.height === height) return false;
+
+    row.height = height;
+    this.reindexFrom(row.index);
+    return true;
+  }
+
+  /** Sets every row's height in one pass. */
+  setHeights(heightOf: (id: RowId) => number) {
+    this.items.forEach(row => { row.height = heightOf(row.id); });
+    this.reindexFrom(0);
+  }
+
+  /**
+   * Index of the row whose bottom border is within `tolerance` of `offset` (measured like `topOf`), or -1.
+   * The border above a row belongs to the row before it; where two are in reach the nearer wins.
+   */
+  borderAt(offset: number, tolerance: number) {
+    if (this.items.length === 0) return -1;
+
+    const index = this.indexAt(offset);
+    const below = index < this.items.length ? Math.abs(this.topOf(index + 1) - offset) : Infinity;
+    const above = index > 0 ? Math.abs(this.topOf(index) - offset) : Infinity;
+    if (Math.min(above, below) > tolerance) return -1;
+    return above < below ? index - 1 : index;
+  }
+
   /**
    * Removes the rows with the given ids, ignoring unknown ones.
    * Returns the slots of the removed rows in ascending order, which the column stores must clear.

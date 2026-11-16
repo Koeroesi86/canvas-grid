@@ -25,6 +25,7 @@ import type { Row } from './utils/row-store';
 const classes = {
   scrollArea: 'scrollArea',
   resizeGuide: 'resizeGuide',
+  horizontalGuide: 'horizontal',
 };
 
 /** How far from a column border the pointer still grabs it, in CSS px. Fingers are less precise than mice. */
@@ -117,6 +118,30 @@ interface AgApi {
 
 export type { CellContext, CellRenderer, CellState, LayerOptions, RendererRef, SortDirection, SortKey };
 
+export interface RowResizeDetail {
+  rowId: RowId;
+  height: number;
+  source: RowResizeSource;
+}
+
+/** What triggered a row resize: the user dragging a row-number border, or code calling `setRowHeightById`. */
+export type RowResizeSource = 'drag' | 'api';
+
+type ResizeTarget = { axis: 'column'; column: ColumnHeader } | { axis: 'row'; row: Row };
+
+/** A border being dragged: where the pointer started, the size at that point, and when the last live event went out. */
+interface DragProgress {
+  start: number;
+  startSize: number;
+  lastEvent: number;
+}
+
+type ColumnDrag = DragProgress & { axis: 'column'; column: ColumnHeader };
+
+type RowDrag = DragProgress & { axis: 'row'; row: Row };
+
+type ResizeDrag = ColumnDrag | RowDrag;
+
 declare global {
   interface HTMLElementTagNameMap {
     'canvas-grid': CanvasGridComponent;
@@ -125,6 +150,8 @@ declare global {
   interface HTMLElementEventMap {
     columnresizing: CustomEvent<ColumnResizeDetail>;
     columnresized: CustomEvent<ColumnResizeDetail>;
+    rowresizing: CustomEvent<RowResizeDetail>;
+    rowresized: CustomEvent<RowResizeDetail>;
   }
 }
 
@@ -156,6 +183,7 @@ class CanvasGridComponent extends HTMLElement {
   dataStore = new DataStore({
     getRowId: (row, index) => this.getRowId(row, index),
     getCellHeight: () => this.cellHeight,
+    getRowHeight: id => this.newRowHeight(id),
   });
   _dataCollection = this.dataStore.rows;
   /** Per-cell memory of the rows drawn recently; bounded, since only the rows in view need it. */
@@ -947,40 +975,113 @@ class CanvasGridComponent extends HTMLElement {
     this.applyColumnWidths(widths).forEach(column => this.emitResized('columnresized', column, 'auto'));
   }
 
-  private resizeDrag: { column: ColumnHeader; startX: number; startWidth: number; lastEvent: number } | undefined = undefined;
+  /** Smallest row height the user can drag to, or a row-height function can return. */
+  private static readonly MIN_ROW_HEIGHT = 8;
 
-  /** The column whose right border is under the pointer, when it can be resized by dragging. */
-  private findResizeBorder(clientX: number, clientY: number, pointerType: string) {
-    if (!this.showHeaders) return undefined;
+  /** Heights set for single rows by dragging or `setRowHeightById`, by row id; they win over `setRowHeight`'s function. */
+  private readonly rowHeightOverrides = new Map<string, number>();
 
+  private rowHeightOf: ((id: RowId) => number) | undefined = undefined;
+
+  private heightOfRow(id: RowId) {
+    const height = this.rowHeightOverrides.get(String(id)) ?? this.rowHeightOf?.(id) ?? this.cellHeight;
+    return Math.max(CanvasGridComponent.MIN_ROW_HEIGHT, Math.round(height));
+  }
+
+  /** Only asked for rows being added, and only when it can differ from `cellHeight`. */
+  private readonly newRowHeight = (id: RowId) =>
+    this.rowHeightOverrides.size === 0 && this.rowHeightOf === undefined ? undefined : this.heightOfRow(id);
+
+  private refreshRowHeights() {
+    this.refreshScrollbar();
+    this.requestRelayout();
+  }
+
+  private emitRowResized(type: 'rowresized' | 'rowresizing', rowId: RowId, source: RowResizeSource) {
+    const height = this._dataCollection.get(rowId)?.height;
+    if (height !== undefined) this.dispatchEvent(new CustomEvent<RowResizeDetail>(type, { detail: { rowId, height, source } }));
+  }
+
+  /**
+   * Sets the height of every row: a number in px (also the height of rows added later), or a function of the row id
+   * returning one, called for existing rows now and for rows as they are added once their values are stored.
+   * Replaces the heights of rows resized one by one. Fires no events.
+   */
+  setRowHeight(height: number | ((id: RowId) => number)) {
+    this.rowHeightOverrides.clear();
+    if (typeof height === 'function') this.rowHeightOf = height;
+    else {
+      this.rowHeightOf = undefined;
+      this.cellHeight = height;
+    }
+    this._dataCollection.setHeights(id => this.heightOfRow(id));
+    this.refreshRowHeights();
+  }
+
+  /** Sets one row's height in px (at least 8) and fires `rowresized`; the height sticks to the row through sorting and updates. */
+  setRowHeightById(id: RowId, height: number) {
+    this.rowHeightOverrides.set(String(id), Math.max(CanvasGridComponent.MIN_ROW_HEIGHT, Math.round(height)));
+    if (!this._dataCollection.setHeight(id, this.heightOfRow(id))) return;
+
+    this.refreshRowHeights();
+    this.emitRowResized('rowresized', id, 'api');
+  }
+
+  private resizeDrag: ResizeDrag | undefined = undefined;
+
+  /** The column border or row border under the pointer, when it can be dragged. */
+  private findResizeTarget(clientX: number, clientY: number, pointerType: string): ResizeTarget | undefined {
     const rect = this.getBoundingClientRect();
-    const x = clientX - rect.left - (this.showRowNumbers ? this.rowNumbersWidth : 0);
+    const x = clientX - rect.left;
     const y = clientY - rect.top;
-    // not over the header, the row numbers or the vertical scrollbar
-    if (y < 0 || y > this.headerHeight || x < 0 || x > this.scrollArea.clientWidth) return undefined;
+    const grab = pointerType === 'touch' ? RESIZE_GRAB.touch : RESIZE_GRAB.mouse;
+    // not over the vertical scrollbar
+    if (x < 0 || y < 0 || x > this.scrollArea.clientWidth) return undefined;
 
-    const column = this.columnList[borderAt(this.columnOffsets, x + this.scrollArea.scrollLeft, pointerType === 'touch' ? RESIZE_GRAB.touch : RESIZE_GRAB.mouse)];
-    return column?.resizable === false ? undefined : column;
+    const rowNumbers = this.showRowNumbers ? this.rowNumbersWidth : 0;
+    const headers = this.showHeaders ? this.headerHeight : 0;
+    if (this.showHeaders && y <= headers) return this.findColumnBorder(x - rowNumbers, grab);
+    if (this.showRowNumbers && x < rowNumbers) return this.findRowBorder(y - headers, grab);
+    return undefined;
+  }
+
+  private findColumnBorder(x: number, grab: number): ResizeTarget | undefined {
+    if (x < 0) return undefined;
+
+    const column = this.columnList[borderAt(this.columnOffsets, x + this.scrollArea.scrollLeft, grab)];
+    return column === undefined || column.resizable === false ? undefined : { axis: 'column', column };
+  }
+
+  private findRowBorder(y: number, grab: number): ResizeTarget | undefined {
+    const row = this._dataCollection.at(this._dataCollection.borderAt(y + this.scrollArea.scrollTop, grab));
+    return row === undefined ? undefined : { axis: 'row', row };
   }
 
   private moveResizeGuide() {
-    const { resizeDrag } = this;
-    this.resizeGuide.style.display = resizeDrag ? 'block' : 'none';
+    const { resizeDrag, resizeGuide } = this;
+    resizeGuide.style.display = resizeDrag ? 'block' : 'none';
     if (!resizeDrag) return;
 
-    const right = this.columnOffsets[resizeDrag.column.index + 1] ?? 0;
-    this.resizeGuide.style.transform = `translateX(${(this.showRowNumbers ? this.rowNumbersWidth : 0) + right - this.scrollArea.scrollLeft}px)`;
+    const horizontal = resizeDrag.axis === 'row';
+    resizeGuide.classList.toggle(classes.horizontalGuide, horizontal);
+    const column = this.showRowNumbers ? this.rowNumbersWidth : 0;
+    const header = this.showHeaders ? this.headerHeight : 0;
+    resizeGuide.style.transform = resizeDrag.axis === 'row'
+      ? `translateY(${header + this._dataCollection.topOf(resizeDrag.row.index) + resizeDrag.row.height - this.scrollArea.scrollTop}px)`
+      : `translateX(${column + (this.columnOffsets[resizeDrag.column.index + 1] ?? 0) - this.scrollArea.scrollLeft}px)`;
   }
 
   private readonly resizeGuide = Object.assign(document.createElement('div'), { className: classes.resizeGuide });
 
   private readonly onResizePointerDown = (event: PointerEvent) => {
-    const column = event.button === 0 ? this.findResizeBorder(event.clientX, event.clientY, event.pointerType) : undefined;
-    if (!column) return;
+    const target = event.button === 0 ? this.findResizeTarget(event.clientX, event.clientY, event.pointerType) : undefined;
+    if (!target) return;
 
     event.preventDefault();
     this.scrollArea.setPointerCapture(event.pointerId);
-    this.resizeDrag = { column, startX: event.clientX, startWidth: column.width, lastEvent: 0 };
+    this.resizeDrag = target.axis === 'row'
+      ? { ...target, start: event.clientY, startSize: target.row.height, lastEvent: 0 }
+      : { ...target, start: event.clientX, startSize: target.column.width, lastEvent: 0 };
     this.moveResizeGuide();
   };
 
@@ -988,19 +1089,41 @@ class CanvasGridComponent extends HTMLElement {
     const { resizeDrag } = this;
     if (!resizeDrag) {
       // the cursor follows the border; touch has no hover
-      this.scrollArea.style.cursor = this.findResizeBorder(event.clientX, event.clientY, event.pointerType) ? 'col-resize' : '';
+      const target = this.findResizeTarget(event.clientX, event.clientY, event.pointerType);
+      this.scrollArea.style.cursor = target === undefined ? '' : `${target.axis === 'row' ? 'row' : 'col'}-resize`;
       return;
     }
 
-    const { column } = resizeDrag;
-    this.applyColumnWidths([[column.id, resizeDrag.startWidth + event.clientX - resizeDrag.startX]]);
+    if (resizeDrag.axis === 'row') this.dragRow(resizeDrag, event.clientY - resizeDrag.start);
+    else this.dragColumn(resizeDrag, event.clientX - resizeDrag.start);
     this.moveResizeGuide();
-    const now = performance.now();
-    if (now - resizeDrag.lastEvent < RESIZE_EVENT_INTERVAL_MS) return;
-
-    resizeDrag.lastEvent = now;
-    this.emitResized('columnresizing', column, 'drag');
   };
+
+  private dragColumn(drag: ColumnDrag, delta: number) {
+    const { column } = drag;
+    this.applyColumnWidths([[column.id, drag.startSize + delta]]);
+    if (!this.dueForLiveEvent(drag)) return;
+
+    this.emitResized('columnresizing', column, 'drag');
+  }
+
+  private dragRow(drag: RowDrag, delta: number) {
+    const { id } = drag.row;
+    this.rowHeightOverrides.set(String(id), Math.max(CanvasGridComponent.MIN_ROW_HEIGHT, Math.round(drag.startSize + delta)));
+    if (this._dataCollection.setHeight(id, this.heightOfRow(id))) this.refreshRowHeights();
+    if (!this.dueForLiveEvent(drag)) return;
+
+    this.emitRowResized('rowresizing', id, 'drag');
+  }
+
+  /** Whether enough time has passed since the last live event; counts this one as sent when it has. */
+  private dueForLiveEvent(drag: ResizeDrag) {
+    const now = performance.now();
+    if (now - drag.lastEvent < RESIZE_EVENT_INTERVAL_MS) return false;
+
+    drag.lastEvent = now;
+    return true;
+  }
 
   private readonly onResizePointerEnd = (event: PointerEvent) => {
     const { resizeDrag } = this;
@@ -1009,13 +1132,15 @@ class CanvasGridComponent extends HTMLElement {
     this.resizeDrag = undefined;
     this.scrollArea.releasePointerCapture(event.pointerId);
     this.moveResizeGuide();
-    if (resizeDrag.column.width !== resizeDrag.startWidth) this.emitResized('columnresized', resizeDrag.column, 'drag');
+    if (resizeDrag.axis === 'row' && resizeDrag.row.height !== resizeDrag.startSize) this.emitRowResized('rowresized', resizeDrag.row.id, 'drag');
+    if (resizeDrag.axis === 'column' && resizeDrag.column.width !== resizeDrag.startSize) this.emitResized('columnresized', resizeDrag.column, 'drag');
   };
 
   private readonly onResizeDoubleClick = (event: MouseEvent) => {
-    const column = this.findResizeBorder(event.clientX, event.clientY, 'mouse');
-    if (!column) return;
+    const target = this.findResizeTarget(event.clientX, event.clientY, 'mouse');
+    if (target?.axis !== 'column') return;
 
+    const { column } = target;
     if (column === this.columnList[this.columnList.length - 1] && this.fillRemainingSpace(column)) return;
     this.autoSizeColumns([column.id]);
   };
@@ -1032,7 +1157,7 @@ class CanvasGridComponent extends HTMLElement {
   /** Keeps a touch that starts on a border from scrolling the grid, so the pointer events can drag it instead. */
   private readonly onResizeTouchStart = (event: TouchEvent) => {
     const [touch] = Array.from(event.touches);
-    if (event.touches.length === 1 && this.findResizeBorder(touch.clientX, touch.clientY, 'touch')) event.preventDefault();
+    if (event.touches.length === 1 && this.findResizeTarget(touch.clientX, touch.clientY, 'touch')) event.preventDefault();
   };
 
   get totalHeight() {

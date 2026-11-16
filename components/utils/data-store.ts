@@ -9,6 +9,8 @@ export type RowIdGetter = (row: RowInput, index?: number) => RowId;
 export interface DataStoreEnvironment {
   getRowId: RowIdGetter;
   getCellHeight: () => number;
+  /** The height a row should have when it differs from `getCellHeight()`, asked once its values are stored. */
+  getRowHeight?: (id: RowId) => number | undefined;
 }
 
 interface PendingChange {
@@ -197,6 +199,8 @@ class DataStore {
     const keys = Object.keys(row);
     for (const key of keys) this.column(key).set(slot, row[key], updatedAt);
     this.markSortDirty(id, keys);
+    const height = this.environment.getRowHeight?.(id);
+    if (height !== undefined) this.rows.setHeight(id, height);
   }
 
   private removeRows(ids: Key[]) {
