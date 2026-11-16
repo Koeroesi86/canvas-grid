@@ -45,6 +45,8 @@ const builtIn = {
   headerRenderer: 'header',
 };
 
+const BUILT_IN_LAYERS = [builtIn.background, builtIn.content, builtIn.header];
+
 /** What the grid remembers about a cell between frames. */
 interface CellEntry {
   /** The raw value last drawn, and its formatted text; formatting only runs when the value differs. */
@@ -665,6 +667,9 @@ class CanvasGridComponent extends HTMLElement {
     this.cell.dt = now - this.lastDraw;
     this.cell.isScrolling = this.isScrolling;
     this.lastDraw = now;
+    // everything visible is painted again after a scroll, so custom layers start clean: a renderer that only clears its own cell
+    // would leave what it drew at the old position in the gaps between cells
+    if (!forced && this.hasScrolled()) this.clearCustomLayers();
     // the loading indicator animates until there is data
     let keepDrawing = this._dataCollection.length === 0;
 
@@ -795,6 +800,10 @@ class CanvasGridComponent extends HTMLElement {
       formatted: `${row.index + 1}`,
     });
     this.paint(builtIn.headerRenderer);
+  }
+
+  private clearCustomLayers() {
+    this.layers.filter(layer => !BUILT_IN_LAYERS.includes(layer.name)).forEach(layer => layer.clear());
   }
 
   forceDraw() {
