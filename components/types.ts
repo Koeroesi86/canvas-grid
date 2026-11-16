@@ -58,6 +58,15 @@ export interface SelectionChangeDetail extends GridSelection {
   selecting: boolean;
 }
 
+export interface SelectionCopyDetail {
+  /** What goes to the clipboard: the cells of the newest range as tab-separated values. Change it to copy something else. */
+  text: string;
+  /** The range that was copied. */
+  range: CellRange;
+  /** Rows were left off, because the range holds more cells than one copy takes. */
+  truncated: boolean;
+}
+
 export interface CellFocusDetail {
   rowId: RowId;
   rowIndex: number;
