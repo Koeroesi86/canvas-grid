@@ -116,8 +116,9 @@ canvas-grid {
       }
     }
 
+    /* the box starts at the same left edge as the value drawn on the canvas */
     & > input[type="checkbox"] {
-      margin: auto;
+      margin: auto 0 auto var(--cg-editor-padding-left, 3px);
     }
   }
 
