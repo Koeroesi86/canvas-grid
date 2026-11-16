@@ -75,7 +75,7 @@ Text is laid out with the browser's own canvas text engine, in the cell's padded
 
 ## Resizing columns
 
-Drag the right border of a header to resize its column (a guide line follows the pointer, and the cursor becomes `col-resize` over a border); double-click it to fit the column to its content. Mouse, pen and touch all work. The scroll extent and the visible columns update while dragging.
+Drag the right border of a header to resize its column (a guide line follows the pointer, and the cursor becomes `col-resize` over a border); double-click it to fit the column to its content. Double-clicking the border of the last column while the columns do not fill the grid's width widens it to fill the free space instead (within its `maxWidth`). Mouse, pen and touch all work. The scroll extent and the visible columns update while dragging.
 
 | Event | When | `detail` |
 | --- | --- | --- |

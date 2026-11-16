@@ -1014,8 +1014,20 @@ class CanvasGridComponent extends HTMLElement {
 
   private readonly onResizeDoubleClick = (event: MouseEvent) => {
     const column = this.findResizeBorder(event.clientX, event.clientY, 'mouse');
-    if (column) this.autoSizeColumns([column.id]);
+    if (!column) return;
+
+    if (column === this.columnList[this.columnList.length - 1] && this.fillRemainingSpace(column)) return;
+    this.autoSizeColumns([column.id]);
   };
+
+  /** Widens the last column to the right edge of the viewport when the columns leave it empty; returns whether there was room. */
+  private fillRemainingSpace(column: ColumnHeader) {
+    const free = this.scrollArea.clientWidth - (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.columnOffsets[this.columnOffsets.length - 1];
+    if (free <= 0) return false;
+
+    this.applyColumnWidths([[column.id, column.width + free]]).forEach(changed => this.emitResized('columnresized', changed, 'auto'));
+    return true;
+  }
 
   /** Keeps a touch that starts on a border from scrolling the grid, so the pointer events can drag it instead. */
   private readonly onResizeTouchStart = (event: TouchEvent) => {
