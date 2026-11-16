@@ -44,6 +44,7 @@ Set them on `canvas-grid` or on any ancestor; they are inherited. Colours are an
 | `--cg-selection-color` | `rgba(74, 144, 217, 0.25)` | `rgba(74, 144, 217, 0.2)` | Tint of selected cells |
 | `--cg-selection-border-color` | `#4a90d9` | `#2f6fb5` | Outline of a selection and the active cell |
 | `--cg-scrollbar-color` | `#555` | `#b4bac2` | Scrollbar thumb (plain CSS, not read by the grid) |
+| `--cg-invalid-color` | `#d9534f` | same | Outline of a cell editor holding an invalid value (plain CSS, not read by the grid). The editor also uses `--cg-background`, `--cg-text-color` and `--cg-selection-border-color` |
 
 The zebra, hover and selection colours are drawn over the background, so keep them translucent.
 

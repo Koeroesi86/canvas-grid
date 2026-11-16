@@ -176,3 +176,74 @@ export interface CellRenderer {
 
 /** A renderer, or the name it was registered under. */
 export type RendererRef = string | CellRenderer;
+
+/** A cell by the ids of its row and column, with the value stored in it. */
+export interface CellEditContext {
+  rowId: RowId;
+  rowIndex: number;
+  columnId: Key;
+  columnIndex: number;
+  /** The raw value stored in the cell. */
+  value: unknown;
+}
+
+/** Whether a column's cells can be edited: for all of them, or decided per cell. */
+export type CellEditable = boolean | ((cell: CellEditContext) => boolean);
+
+export interface SelectOption {
+  value: unknown;
+  /** Text shown for the option; defaults to the value as text. */
+  label?: string;
+}
+
+/** The built-in editors: `'text'`, `'number'`, a `'checkbox'` for booleans, or a `select` among `options`. */
+export type BuiltInCellEditor = 'text' | 'number' | 'checkbox' | { type: 'select'; options: readonly (string | number | SelectOption)[] };
+
+/** What a custom editor is built from. */
+export interface CellEditorContext extends CellEditContext {
+  /** The key that started editing by typing; the editor starts with this text instead of the value. Undefined otherwise. */
+  initialText: string | undefined;
+  /** Ends editing with the editor's current value, as Enter does. */
+  commit(): void;
+  /** Ends editing and keeps the old value, as Escape does. */
+  cancel(): void;
+}
+
+/** A custom editor: the grid puts `element` over the cell, focuses it, and asks `getValue` when the user commits. */
+export interface CellEditorInstance {
+  element: HTMLElement;
+  /** The edited value. Strings from the built-in text and number editors go through the column's `valueParser`; a custom editor's value is used as it is. */
+  getValue(): unknown;
+  /** Called instead of focusing `element`. */
+  focus?(): void;
+  /** Called when editing ended, to clean up. */
+  destroy?(): void;
+}
+
+export type CustomCellEditor = (context: CellEditorContext) => CellEditorInstance;
+
+export type CellEditor = BuiltInCellEditor | CustomCellEditor;
+
+/** A change about to be written: what `valueSetter` and `validator` get. */
+export interface CellValueChange extends CellEditContext {
+  /** The value the cell holds now (`value` is the same). */
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+export interface CellEditStartDetail extends CellEditContext {}
+
+export interface CellEditEndDetail extends CellEditContext {
+  /** Editing was cancelled; the cell keeps its value. */
+  cancelled: boolean;
+  /** The committed value; undefined when cancelled. */
+  newValue: unknown;
+}
+
+export interface CellValueChangedDetail extends CellEditContext {
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+/** What an edit does when its cell scrolls out of view: write the value, drop it, or keep the editor (hidden) until the cell is back. */
+export type EditOutOfView = 'commit' | 'cancel' | 'keep';

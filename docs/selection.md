@@ -48,6 +48,7 @@ Clicking a cell gives the grid keyboard focus; a grid with a `selectionMode` tak
 | Enter / Shift+Enter | Move the active cell down / up inside the selection, continuing on the next column and wrapping at the end. With one cell selected, move the selection |
 | Tab / Shift+Tab | The same across and back. With one cell selected they are left to the browser, so the grid never traps keyboard focus |
 | Escape | Collapse the selection to the active cell |
+| F2, typing, Enter on one cell | Start [editing](editing.md) the active cell, when its column is `editable`. Without one, Enter keeps moving the selection |
 
 Keys the page already handled (`defaultPrevented`) and Alt combinations are ignored.
 

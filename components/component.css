@@ -56,6 +56,35 @@ canvas-grid {
     }
   }
 
+  & .cellEditor {
+    position: absolute;
+    z-index: 12;
+    display: flex;
+    background: var(--cg-background, #333);
+    color: var(--cg-text-color, #efefef);
+    outline: 2px solid var(--cg-selection-border-color, #4a90d9);
+    outline-offset: -2px;
+
+    &.invalid {
+      outline-color: var(--cg-invalid-color, #d9534f);
+    }
+
+    & > input:not([type="checkbox"]), & > select {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      padding: 0 6px;
+    }
+
+    & > input[type="checkbox"] {
+      margin: auto;
+    }
+  }
+
   & .resizeGuide {
     display: none;
     position: absolute;

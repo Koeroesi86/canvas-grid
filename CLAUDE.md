@@ -10,6 +10,7 @@ Read the relevant doc instead of guessing; update it when behaviour changes.
 - [docs/api.md](docs/api.md): data model, methods, properties
 - [docs/sorting.md](docs/sorting.md): sort model semantics
 - [docs/selection.md](docs/selection.md): selection modes, model, events
+- [docs/editing.md](docs/editing.md): cell editing, editors, events
 - [docs/renderers.md](docs/renderers.md): renderer objects, `CellContext`, layers
 - [docs/ag-grid-adapter.md](docs/ag-grid-adapter.md): `agApi`
 - [docs/theming.md](docs/theming.md): `--cg-*` tokens, light and dark

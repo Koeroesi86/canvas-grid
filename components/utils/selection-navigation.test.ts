@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveTarget, revealOffset, stepWithin } from './selection-navigation';
+import { moveTarget, revealOffset, stepAfterEdit, stepWithin } from './selection-navigation';
 
 const size = { rowCount: 100, columnCount: 5, pageRows: 20 };
 
@@ -92,5 +92,27 @@ describe('revealOffset', () => {
 
   it('shows the start of a span that is larger than the viewport', () => {
     expect(revealOffset(300, 500, 0, 100)).toBe(300);
+  });
+});
+
+describe('stepAfterEdit', () => {
+  const grid = { rowCount: 3, columnCount: 2, pageRows: 1 };
+
+  it('moves down on Enter and up with shift, staying at the edge', () => {
+    expect(stepAfterEdit({ row: 0, column: 1 }, 'row', false, grid)).toEqual({ row: 1, column: 1 });
+    expect(stepAfterEdit({ row: 1, column: 1 }, 'row', true, grid)).toEqual({ row: 0, column: 1 });
+    expect(stepAfterEdit({ row: 2, column: 1 }, 'row', false, grid)).toEqual({ row: 2, column: 1 });
+    expect(stepAfterEdit({ row: 0, column: 1 }, 'row', true, grid)).toEqual({ row: 0, column: 1 });
+  });
+
+  it('moves right on Tab and wraps to the next row, and back with shift', () => {
+    expect(stepAfterEdit({ row: 0, column: 0 }, 'column', false, grid)).toEqual({ row: 0, column: 1 });
+    expect(stepAfterEdit({ row: 0, column: 1 }, 'column', false, grid)).toEqual({ row: 1, column: 0 });
+    expect(stepAfterEdit({ row: 1, column: 0 }, 'column', true, grid)).toEqual({ row: 0, column: 1 });
+  });
+
+  it('stays on the last cell of the grid', () => {
+    expect(stepAfterEdit({ row: 2, column: 1 }, 'column', false, grid)).toEqual({ row: 2, column: 1 });
+    expect(stepAfterEdit({ row: 0, column: 0 }, 'column', true, grid)).toEqual({ row: 0, column: 0 });
   });
 });

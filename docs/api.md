@@ -22,6 +22,7 @@ Column object fields (`ColumnDefinition`):
 | `font` | grid `font` | CSS font of this column's cells, e.g. `'600 12px Menlo, monospace'`. Widths are measured per font, so mixing fonts costs nothing extra while drawing. Keep it within the row height (`cellHeight`); it is not `'inherit'`, which belongs to the grid's `font` |
 | `headerFont` | grid `headerFont` | CSS font of this column's header |
 | `headerRenderer` | `'header'` | Renderer drawing this column's header (name or object) |
+| `editable`, `cellEditor`, `valueParser`, `validator`, `valueSetter` | not editable | In-place editing of the column's cells, see [Editing](editing.md) |
 
 ## Methods
 
@@ -40,6 +41,7 @@ Column object fields (`ColumnDefinition`):
 | `setRowHeightById(id, height)` | Sets one row's height (at least 8 px) and fires `rowresized`. It sticks to the row id through sorting, updates and `setValues` |
 | `getSelection()` / `setSelection(ranges, active?)` / `clearSelection()` | Read, replace and clear the selected ranges, see [Selection](selection.md) |
 | `copySelection()` / `contextMenuItems` | Copy the selection, and the entries of the right-click menu, see [Selection](selection.md#context-menu) |
+| `startEditing(rowId, columnId)` / `stopEditing(cancel?)` | Open and end a cell editor, see [Editing](editing.md) |
 | `getColumnState()` / `setColumnState(state)` | `[{ id, width }]` in display order; save the first and pass it to the second to restore widths. Unknown ids are skipped |
 | `refreshTheme()` | Re-reads the `--cg-*` tokens and redraws if one changed. Runs by itself on a colour scheme, `theme`, `class`, `style` or `data-theme` change of the grid or an ancestor |
 | `refreshFonts()` | Re-reads inherited fonts and redraws. Call it after changing the CSS font while `font` / `headerFont` are `'inherit'`; loading web fonts does it automatically |
@@ -66,6 +68,7 @@ Colours, fonts and sizes default to the CSS theme tokens (`--cg-*`, light and da
 | `textOverflow` | `'clip'` | Text wider than its cell: `'clip'` cuts it off at the cell edge and measures nothing, `'ellipsis'` shortens it and ends it with `…`, which means measuring it (see below) |
 | `direction` | `'ltr'` | `'rtl'`, or `'auto'` to pick the direction per cell from its first letter. Right-to-left text is aligned to the right of the cell, and an ellipsis ends it on the left |
 | `getRowId` | `(row) => row.id` | Derives the row id; assign your own to key rows differently |
+| `editOutOfView` | `'cancel'` | What happens to an edit whose cell scrolls out of view: `'cancel'`, `'commit'` or `'keep'`, see [Editing](editing.md) |
 | `selectionMode` | `'none'` | What the user can select: `'cell'`, `'range'`, `'row'` or `'column'`, see [Selection](selection.md) |
 | `selectionColor` / `selectionBorderColor` | blue | Tint and outline of the selection; call `forceDraw()` after setting them |
 | `textColor` / `backgroundColor` / `headerBackgroundColor` | from the theme | Colours of text and backgrounds; they win over the CSS tokens, see [Theming](theming.md) |
