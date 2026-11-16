@@ -50,4 +50,16 @@ canvas-grid {
       will-change: scroll-position, transform;
     }
   }
+
+  & .resizeGuide {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 100%;
+    background: #4a90d9;
+    pointer-events: none;
+    z-index: 11;
+  }
 }
