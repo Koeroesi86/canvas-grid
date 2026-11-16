@@ -17,6 +17,7 @@ grid.addEventListener('cellvaluechanged', ({ detail }) => save(detail.rowId, det
 | Action | Result |
 | --- | --- |
 | Double-click a cell | Starts editing it |
+| Right-click or long-press, then **Edit** | Starts editing the cell under the pointer; the way in on touch screens, where a double tap may not register |
 | F2, or Enter with a single cell selected | Starts editing the active cell (needs a `selectionMode`). With several cells selected Enter keeps [stepping](selection.md#keyboard) through the selection |
 | Typing a character on the active cell | Starts editing with that character as the text (text, number and custom editors) |
 | Enter / Shift+Enter | Commits, and moves the selection down / up |

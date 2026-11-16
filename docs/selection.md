@@ -68,7 +68,7 @@ grid.addEventListener('selectioncopy', ({ detail }) => {
 
 ## Context menu
 
-With a `selectionMode` other than `'none'`, a right click, a long press, the menu key or Shift+F10 opens the grid's own menu instead of the browser's. It holds one entry, **Copy**, which calls `copySelection()`, so `selectioncopy` applies to it too. The menu is plain HTML (`role="menu"` with `menuitem` buttons) in the top layer, so it is not clipped by the grid, and it closes on Escape, an outside click, scrolling or picking an entry. Arrow keys, Home and End move through the entries and Enter picks one.
+With a `selectionMode` other than `'none'`, a right click, a long press, the menu key or Shift+F10 opens the grid's own menu instead of the browser's. It holds two entries: **Edit**, which opens the [editor](editing.md) on the cell under the pointer (greyed out when that cell isn't editable, or the menu was opened over a header), and **Copy**, which calls `copySelection()`, so `selectioncopy` applies to it too. The menu is plain HTML (`role="menu"` with `menuitem` buttons) in the top layer, so it is not clipped by the grid, and it closes on Escape, an outside click, scrolling or picking an entry. Arrow keys, Home and End move through the entries and Enter picks one.
 
 A right click inside the selection keeps it; elsewhere it first selects what was clicked: the cell, or the whole column or row for a header or row number. The keyboard opens the menu at the active cell.
 

@@ -2031,6 +2031,7 @@ class CanvasGridComponent extends HTMLElement {
 
   /** The entries of the context menu. Replace them to change the menu; an empty list keeps the browser's own menu. */
   contextMenuItems: ContextMenuItem[] = [
+    { id: 'edit', label: 'Edit', disabled: ({ row, column }) => !this.canEditAt(row, column), run: ({ row, column }) => void this.editAt(row, column) },
     { id: 'copy', label: 'Copy', disabled: () => this.selectionModel.ranges.length === 0, run: () => void this.copySelection() },
   ];
 
@@ -2296,11 +2297,26 @@ class CanvasGridComponent extends HTMLElement {
     if (!this.finishEdit(false)) this.finishEdit(true);
   };
 
+  /** The cell at a displayed row and column, when both exist. */
+  private cellAt(row: number | undefined, column: number | undefined) {
+    const rowData = row === undefined ? undefined : this._dataCollection.at(row);
+    const header = column === undefined ? undefined : this.columnList[column];
+    return rowData && header ? this.cellOf(rowData.id, header.id) : undefined;
+  }
+
+  private canEditAt(row: number | undefined, column: number | undefined) {
+    const cell = this.cellAt(row, column);
+    return cell !== undefined && this.canEdit(cell);
+  }
+
+  private editAt(row: number | undefined, column: number | undefined) {
+    const cell = this.cellAt(row, column);
+    return cell !== undefined && this.openEditor(cell.rowId, cell.columnId, undefined);
+  }
+
   private readonly onEditDoubleClick = (event: MouseEvent) => {
     const hit = this.hitAt(event.clientX, event.clientY);
-    const row = hit?.zone === 'cell' ? this._dataCollection.at(hit.row) : undefined;
-    const column = hit?.zone === 'cell' ? this.columnList[hit.column] : undefined;
-    if (row && column) this.openEditor(row.id, column.id, undefined);
+    if (hit?.zone === 'cell') this.editAt(hit.row, hit.column);
   };
 
   /** Starts editing the active cell for F2, Enter (with a single cell selected) or a typed character, which begins the text. */
