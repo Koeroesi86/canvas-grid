@@ -31,6 +31,7 @@ import SelectionModel, {
 } from './utils/selection';
 import type { Axis } from './utils/selection';
 import { moveTarget, revealOffset, stepWithin } from './utils/selection-navigation';
+import { toTsv } from './utils/clipboard';
 import type { LayerOptions } from './utils/layer';
 import type {
   CellContext,
@@ -45,6 +46,7 @@ import type {
   RowId,
   RowInput,
   SelectionChangeDetail,
+  SelectionCopyDetail,
   SelectionLevel,
   SelectionMode,
   SortDirection,
@@ -163,6 +165,7 @@ export type {
   LayerOptions,
   RendererRef,
   SelectionChangeDetail,
+  SelectionCopyDetail,
   SelectionMode,
   SortDirection,
   SortKey,
@@ -239,6 +242,7 @@ declare global {
     rowresized: CustomEvent<RowResizeDetail>;
     selectionchange: CustomEvent<SelectionChangeDetail>;
     cellfocus: CustomEvent<CellFocusDetail>;
+    selectioncopy: CustomEvent<SelectionCopyDetail>;
   }
 }
 
@@ -588,6 +592,7 @@ class CanvasGridComponent extends HTMLElement {
     this.scrollArea.addEventListener('pointerup', this.onSelectPointerEnd);
     this.scrollArea.addEventListener('pointercancel', this.onSelectPointerEnd);
     this.addEventListener('keydown', this.onKeyDown);
+    this.addEventListener('copy', this.onCopy);
     // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
     this.scrollArea.addEventListener('scroll', () => {
       this.isScrolling = true;
@@ -1769,6 +1774,35 @@ class CanvasGridComponent extends HTMLElement {
   private readonly onKeyDown = (event: KeyboardEvent) => {
     if (this.mode === 'none' || event.defaultPrevented || event.altKey || !this.handleSelectionKey(event)) return;
 
+    event.preventDefault();
+  };
+
+  /** The newest range as tab-separated text of the formatted values, as shown; undefined when nothing is selected. */
+  private copiedSelection(): SelectionCopyDetail | undefined {
+    const { ranges } = this.selectionModel;
+    const range = ranges[ranges.length - 1];
+    const bounds = range && resolve(range, this._dataCollection.length, this.columnList.length);
+    if (!range || !bounds) return undefined;
+
+    const columns = this.columnList.slice(bounds.left, bounds.right + 1)
+      .map(header => ({ header, store: this.dataStore.columns.get(String(header.id)) }));
+    const { text, truncated } = toTsv(bounds, (row, column) => {
+      const { header, store } = columns[column - bounds.left];
+      const value = store?.get(this._dataCollection.at(row)?.slot ?? -1);
+      return value === undefined ? '' : header.valueFormatter(value);
+    });
+    return { text, range: { ...range }, truncated };
+  }
+
+  /** Puts the selection on the clipboard when the user copies. `selectioncopy` can change the text or cancel the copy. */
+  private readonly onCopy = (event: ClipboardEvent) => {
+    const copied = this.mode === 'none' ? undefined : this.copiedSelection();
+    if (!copied || !event.clipboardData) return;
+
+    const custom = new CustomEvent<SelectionCopyDetail>('selectioncopy', { detail: copied, cancelable: true });
+    if (!this.dispatchEvent(custom)) return;
+
+    event.clipboardData.setData('text/plain', copied.text);
     event.preventDefault();
   };
 
