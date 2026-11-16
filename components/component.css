@@ -10,6 +10,11 @@ canvas-grid {
     padding: 0;
   }
 
+  /* the active cell shows where the focus is when the pointer gave it; keyboard focus keeps the browser's outline */
+  &:focus:not(:focus-visible) {
+    outline: none;
+  }
+
   & .drawingLayer {
     position: absolute;
     top: 0;

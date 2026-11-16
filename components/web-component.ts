@@ -27,8 +27,10 @@ import SelectionModel, {
   rangeFor,
   resolve,
   rowLevel,
+  shapeOf,
 } from './utils/selection';
 import type { Axis } from './utils/selection';
+import { moveTarget, revealOffset, stepWithin } from './utils/selection-navigation';
 import type { LayerOptions } from './utils/layer';
 import type {
   CellContext,
@@ -585,6 +587,7 @@ class CanvasGridComponent extends HTMLElement {
     this.scrollArea.addEventListener('pointermove', this.onSelectPointerMove);
     this.scrollArea.addEventListener('pointerup', this.onSelectPointerEnd);
     this.scrollArea.addEventListener('pointercancel', this.onSelectPointerEnd);
+    this.addEventListener('keydown', this.onKeyDown);
     // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
     this.scrollArea.addEventListener('scroll', () => {
       this.isScrolling = true;
@@ -1352,7 +1355,23 @@ class CanvasGridComponent extends HTMLElement {
     if (mode === this.mode) return;
 
     this.mode = mode;
+    this.updateTabIndex();
     if (mode === 'none') this.clearSelection();
+  }
+
+  /** Whether the grid put `tabindex` on itself, so it is only taken away again when it was not the page's. */
+  private ownsTabIndex = false;
+
+  /** A grid with selection takes keyboard focus; one without it stays out of the tab order, as before. */
+  private updateTabIndex() {
+    if (this.mode !== 'none' && !this.hasAttribute('tabindex')) {
+      this.tabIndex = 0;
+      this.ownsTabIndex = true;
+    }
+    if (this.mode === 'none' && this.ownsTabIndex) {
+      this.removeAttribute('tabindex');
+      this.ownsTabIndex = false;
+    }
   }
 
   get selectionMode() {
@@ -1565,7 +1584,9 @@ class CanvasGridComponent extends HTMLElement {
       return;
     }
 
+    // cancelling the press also cancels the browser's own focusing, so the grid takes focus for the keyboard here
     event.preventDefault();
+    this.focus({ preventScroll: true });
     const drag = this.press(hit, modifiers, true);
     if (!drag) return;
 
@@ -1605,7 +1626,10 @@ class CanvasGridComponent extends HTMLElement {
     const { touchTap, selectDrag } = this;
     if (touchTap?.pointerId === event.pointerId) {
       this.touchTap = undefined;
-      if (event.type === 'pointerup') this.press(touchTap.hit, touchTap.modifiers, false);
+      if (event.type === 'pointerup') {
+        this.focus({ preventScroll: true });
+        this.press(touchTap.hit, touchTap.modifiers, false);
+      }
       return;
     }
     if (!selectDrag || selectDrag.pointerId !== event.pointerId) return;
@@ -1619,6 +1643,134 @@ class CanvasGridComponent extends HTMLElement {
     if (this.selectDrag?.frame !== undefined) cancelAnimationFrame(this.selectDrag.frame);
     this.selectDrag = undefined;
   }
+
+  /** Scrolls the least that brings a cell fully into view. */
+  private revealCell({ row, column }: CellPosition) {
+    const { scrollArea, _dataCollection: rows, columnOffsets } = this;
+    const { left, top } = this.offsetsOf(0, 0);
+    const scrollTop = revealOffset(rows.topOf(row), rows.topOf(row + 1), scrollArea.scrollTop, scrollArea.clientHeight - top);
+    const scrollLeft = revealOffset(columnOffsets[column], columnOffsets[column + 1], scrollArea.scrollLeft, scrollArea.clientWidth - left);
+    if (scrollTop !== scrollArea.scrollTop) scrollArea.scrollTop = scrollTop;
+    if (scrollLeft !== scrollArea.scrollLeft) scrollArea.scrollLeft = scrollLeft;
+  }
+
+  private get gridSize() {
+    const { top } = this.offsetsOf(0, 0);
+    return {
+      rowCount: this._dataCollection.length,
+      columnCount: this.columnList.length,
+      pageRows: Math.max(1, Math.floor((this.scrollArea.clientHeight - top) / this.cellHeight)),
+    };
+  }
+
+  /** Selects one cell, or its whole row or column in those modes, and brings it into view. */
+  private moveTo(cell: CellPosition) {
+    const range = rangeFor(this.mode, cell, cell);
+    this.changeSelection(() => this.selectionModel.set(range, cell), false);
+    this.revealCell(cell);
+  }
+
+  /** Stretches the newest range to `cell`; it keeps being whole columns or whole rows when it was, and the active cell stays. */
+  private extendTo(cell: CellPosition) {
+    const { selectionModel, mode } = this;
+    const { active, focus } = selectionModel;
+    const last = selectionModel.ranges[selectionModel.ranges.length - 1];
+    if (!active || !focus || !last) return;
+
+    const shape = shapeOf(last);
+    if (shape === 'all') return;
+    if (shape === 'block') {
+      const range = rangeFor(mode, active, cell);
+      this.changeSelection(() => selectionModel.extend(range, cell), false);
+      this.revealCell(cell);
+      return;
+    }
+
+    const axis = shape;
+    const range = lineRange(axis, lineIndex(axis, active), lineIndex(axis, cell));
+    const moved = linePosition(axis, lineIndex(axis, cell), crossIndex(axis, focus));
+    this.changeSelection(() => selectionModel.extend(range, moved), false);
+    this.revealCell(moved);
+  }
+
+  /** Moves the active cell inside a selection of several cells; with one cell selected Enter moves the selection, and Tab is left to the page. */
+  private stepActive(axis: Axis, backwards: boolean) {
+    const { selectionModel } = this;
+    const { active } = selectionModel;
+    const last = selectionModel.ranges[selectionModel.ranges.length - 1];
+    const bounds = last && resolve(last, this._dataCollection.length, this.columnList.length);
+    if (!active) return false;
+    if (bounds && (bounds.top !== bounds.bottom || bounds.left !== bounds.right)) {
+      const next = stepWithin(bounds, active, axis, backwards);
+      this.changeSelection(() => selectionModel.activate(next), false);
+      this.revealCell(next);
+      return true;
+    }
+    if (axis === 'column') return false;
+
+    const target = moveTarget(active, backwards ? 'ArrowUp' : 'ArrowDown', false, this.gridSize);
+    if (target) this.moveTo(target);
+    return true;
+  }
+
+  /** Selects the whole column (ctrl+space) or row (shift+space) of the active cell. */
+  private selectLineOfActive(axis: Axis) {
+    const { active } = this.selectionModel;
+    if (!active || !CanvasGridComponent.ZONE_MODES[axis].includes(this.mode)) return false;
+
+    const range = lineRange(axis, lineIndex(axis, active), lineIndex(axis, active));
+    this.changeSelection(() => this.selectionModel.set(range, active), false);
+    return true;
+  }
+
+  /** Collapses the selection to its active cell. */
+  private collapseSelection() {
+    const { active } = this.selectionModel;
+    if (!active) return false;
+
+    const range = rangeFor(this.mode, active, active);
+    return this.changeSelection(() => this.selectionModel.set(range, active), false);
+  }
+
+  /** Moves or extends the selection for a navigation key; the first press just selects the cell at the top left of the view. */
+  private navigate(event: KeyboardEvent, ctrl: boolean) {
+    const { active, focus } = this.selectionModel;
+    const size = this.gridSize;
+    if (size.rowCount === 0 || size.columnCount === 0) return false;
+
+    const start = { row: this.firstVisible('column'), column: this.firstVisible('row') };
+    const extend = event.shiftKey && this.mode !== 'cell';
+    const target = moveTarget(active ? (extend && focus) || active : start, event.key, ctrl, size);
+    if (!target) return false;
+
+    if (!active) this.moveTo(start);
+    else if (extend) this.extendTo(target);
+    else this.moveTo(target);
+    return true;
+  }
+
+  /** Returns whether the key was a selection key, which is then kept from also scrolling the page. */
+  private handleSelectionKey(event: KeyboardEvent) {
+    const ctrl = event.ctrlKey || event.metaKey;
+    const { key, shiftKey } = event;
+    if (ctrl && key.toLowerCase() === 'a') {
+      if (!CanvasGridComponent.ZONE_MODES.all.includes(this.mode)) return false;
+      this.selectEverything(false);
+      return true;
+    }
+    if (key === ' ' && ctrl) return this.selectLineOfActive('column');
+    if (key === ' ' && shiftKey) return this.selectLineOfActive('row');
+    if (key === 'Enter') return this.stepActive('row', shiftKey);
+    if (key === 'Tab') return this.stepActive('column', shiftKey);
+    if (key === 'Escape') return this.collapseSelection();
+    return this.navigate(event, ctrl);
+  }
+
+  private readonly onKeyDown = (event: KeyboardEvent) => {
+    if (this.mode === 'none' || event.defaultPrevented || event.altKey || !this.handleSelectionKey(event)) return;
+
+    event.preventDefault();
+  };
 
   get totalHeight() {
     return this._dataCollection.totalHeight;
