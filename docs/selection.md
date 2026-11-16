@@ -32,6 +32,25 @@ Pressing on the border of a header or row number still resizes it, see [resizing
 
 The grid does not scroll on a click, only while dragging. Dragging along the headers scrolls sideways only, and along the row numbers vertically only.
 
+## Keyboard
+
+Clicking a cell gives the grid keyboard focus; a grid with a `selectionMode` takes `tabindex="0"` unless the page set one, and one without stays out of the tab order. The grid scrolls to keep the active cell in view.
+
+| Keys | Action |
+| --- | --- |
+| Arrows | Move the active cell and select only it (whole rows or columns in `'row'` and `'column'` mode). With nothing selected, the first press selects the cell at the top left of the view |
+| Shift+arrows | Extend the newest range from the active cell. A range of whole columns or rows keeps being one, and only grows along its own direction |
+| Ctrl/Cmd+arrows | Jump to the edge of the grid; with Shift, extend to it |
+| Home / End | First / last column of the row. With Ctrl/Cmd: the first / last cell |
+| PageUp / PageDown | Move a screen of rows (shift extends) |
+| Ctrl/Cmd+A | Select everything (not in `'cell'` mode) |
+| Ctrl/Cmd+Space / Shift+Space | Select the column / row of the active cell |
+| Enter / Shift+Enter | Move the active cell down / up inside the selection, continuing on the next column and wrapping at the end. With one cell selected, move the selection |
+| Tab / Shift+Tab | The same across and back. With one cell selected they are left to the browser, so the grid never traps keyboard focus |
+| Escape | Collapse the selection to the active cell |
+
+Keys the page already handled (`defaultPrevented`) and Alt combinations are ignored.
+
 ## Model
 
 A selection is a list of **ranges** and one **active cell**. A range names its rows and columns by displayed position, both ends included:
@@ -54,6 +73,8 @@ The active cell is where keyboard moves start; it is drawn with a border and wit
 ## Drawing
 
 Selection has a layer of its own (`selection`, between `content` and `header`), created the first time something is selected, so a grid that never selects carries no extra canvas. Each range is drawn as one tinted rectangle with an outline, however many cells it covers, and the active cell as a thicker border. It is redrawn only when the selection, the scroll position or the layout changes.
+
+Headers and row numbers show what is selected: a column header whose column has some selected cells is drawn with `selectedBackground`, and with `fullySelectedBackground` when the whole column is selected (a whole-column range, or ranges covering every row); row numbers work the same for rows. Both are options of the header renderer; custom header renderers read `cell.selected` (`'none'`, `'partial'` or `'full'`, see [renderers](renderers.md)).
 
 Headers and row numbers show what is selected: a column header whose column has some selected cells is drawn with `selectedBackground`, and with `fullySelectedBackground` when the whole column is selected (a whole-column range, or ranges covering every row); row numbers work the same for rows. Both are options of the header renderer; custom header renderers read `cell.selected` (`'none'`, `'partial'` or `'full'`, see [renderers](renderers.md)).
 

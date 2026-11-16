@@ -13,6 +13,7 @@ import SelectionModel, {
   rangeFor,
   resolve,
   rowLevel,
+  shapeOf,
   span,
 } from './selection';
 
@@ -82,6 +83,15 @@ describe('header levels', () => {
   });
 });
 
+describe('shapeOf', () => {
+  it('tells what a range covers', () => {
+    expect(shapeOf({})).toBe('all');
+    expect(shapeOf({ columns: [1, 2] })).toBe('column');
+    expect(shapeOf({ rows: [1, 2] })).toBe('row');
+    expect(shapeOf({ rows: [1, 2], columns: [0, 0] })).toBe('block');
+  });
+});
+
 describe('lines', () => {
   it('builds a whole column or row, or a run of them', () => {
     expect(lineRange('column', 5, 2)).toEqual({ columns: [2, 5] });
@@ -144,6 +154,15 @@ describe('SelectionModel', () => {
     expect(model.replace([])).toBe(true);
     expect(model.ranges).toEqual([]);
     expect(model.active).toBeUndefined();
+  });
+
+  it('moves the active cell and leaves the ranges alone', () => {
+    const model = new SelectionModel();
+    model.set({ rows: [2, 5], columns: [0, 1] }, { row: 2, column: 0 });
+    expect(model.activate({ row: 3, column: 0 })).toBe(true);
+    expect(model.activate({ row: 3, column: 0 })).toBe(false);
+    expect(model.ranges).toEqual([{ rows: [2, 5], columns: [0, 1] }]);
+    expect(model.active).toEqual({ row: 3, column: 0 });
   });
 
   it('clears', () => {

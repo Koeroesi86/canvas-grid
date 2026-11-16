@@ -77,6 +77,14 @@ export const rowLevel = (ranges: readonly CellRange[], row: number, columnCount:
   return level;
 };
 
+/** What a range covers: everything, whole columns, whole rows, or a block of cells. */
+export const shapeOf = (range: CellRange): 'all' | 'column' | 'row' | 'block' => {
+  if (range.rows === undefined && range.columns === undefined) return 'all';
+  if (range.rows === undefined) return 'column';
+  if (range.columns === undefined) return 'row';
+  return 'block';
+};
+
 /** Rows run down the grid and columns across it; a header selects a line of cells along one of them. */
 export type Axis = 'row' | 'column';
 
@@ -145,6 +153,11 @@ class SelectionModel {
 
   clear() {
     return this.assign([], undefined, undefined);
+  }
+
+  /** Moves the active cell without touching the ranges, as Enter and Tab do inside a selection. */
+  activate(position: CellPosition) {
+    return this.assign(this.ranges, position, position);
   }
 
   /** Replaces everything, with the first cell of the last range active unless `active` says otherwise. */
