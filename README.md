@@ -16,6 +16,7 @@ Live demo and feature overview: https://koeroesi86.github.io/canvas-grid/
 - [Getting started](docs/getting-started.md): install, usage, browser support
 - [API reference](docs/api.md): data model, methods, properties
 - [Sorting](docs/sorting.md)
+- [Selection](docs/selection.md)
 - [Custom renderers and layers](docs/renderers.md)
 - [AG Grid-style adapter](docs/ag-grid-adapter.md)
 - [TypeScript](docs/typescript.md)
