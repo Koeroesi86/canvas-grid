@@ -57,6 +57,8 @@ Selection has a layer of its own (`selection`, between `content` and `header`), 
 
 Headers and row numbers show what is selected: a column header whose column has some selected cells is drawn with `selectedBackground`, and with `fullySelectedBackground` when the whole column is selected (a whole-column range, or ranges covering every row); row numbers work the same for rows. Both are options of the header renderer; custom header renderers read `cell.selected` (`'none'`, `'partial'` or `'full'`, see [renderers](renderers.md)).
 
+Headers and row numbers show what is selected: a column header whose column has some selected cells is drawn with `selectedBackground`, and with `fullySelectedBackground` when the whole column is selected (a whole-column range, or ranges covering every row); row numbers work the same for rows. Both are options of the header renderer; custom header renderers read `cell.selected` (`'none'`, `'partial'` or `'full'`, see [renderers](renderers.md)).
+
 | Property | Default | Description |
 | --- | --- | --- |
 | `selectionColor` | `'rgba(74, 144, 217, 0.25)'` | Tint of selected cells. Set it, then call `forceDraw()` |
