@@ -26,6 +26,42 @@ export interface SortKey {
   compare?: (a: unknown, b: unknown) => number;
 }
 
+/** A cell by displayed position: zero-based row and column indexes. */
+export interface CellPosition {
+  row: number;
+  column: number;
+}
+
+/** First and last index of a run of rows or columns, both inclusive. */
+export type Span = readonly [first: number, last: number];
+
+/** A block of cells. Leaving `rows` or `columns` out means all of them, now and as rows are added. */
+export interface CellRange {
+  rows?: Span;
+  columns?: Span;
+}
+
+/** What `getSelection` returns and `setSelection` takes: the selected ranges, and the cell that has focus. */
+export interface GridSelection {
+  ranges: CellRange[];
+  active: CellPosition | undefined;
+}
+
+/** How the user can select: not at all, one cell, ranges of cells (Excel-style), whole rows or whole columns. */
+export type SelectionMode = 'none' | 'cell' | 'range' | 'row' | 'column';
+
+export interface SelectionChangeDetail extends GridSelection {
+  /** True while the pointer is down and the selection is being dragged out; a final event with `false` follows. */
+  selecting: boolean;
+}
+
+export interface CellFocusDetail {
+  rowId: RowId;
+  rowIndex: number;
+  columnId: Key;
+  columnIndex: number;
+}
+
 /** Props of a drawable element (see utils/jsx); positions are relative to the draw origin. */
 export interface RenderProps {
   value?: string;

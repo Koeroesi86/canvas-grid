@@ -17,8 +17,25 @@ import type { TextStyle } from './text';
 import { resolveFont } from './utils/inherited-font';
 import { borderAt, buildOffsets, clampWidth, columnAt } from './utils/column-layout';
 import { SORT_INDICATOR_AREA } from './sort-indicator';
+import SelectionModel, { dragScrollSpeed, rangeFor, resolve } from './utils/selection';
 import type { LayerOptions } from './utils/layer';
-import type { CellContext, CellRenderer, CellState, Key, RendererRef, RowId, RowInput, SortDirection, SortKey } from './types';
+import type {
+  CellContext,
+  CellFocusDetail,
+  CellPosition,
+  CellRange,
+  CellRenderer,
+  CellState,
+  GridSelection,
+  Key,
+  RendererRef,
+  RowId,
+  RowInput,
+  SelectionChangeDetail,
+  SelectionMode,
+  SortDirection,
+  SortKey,
+} from './types';
 import type { RowIdGetter } from './utils/data-store';
 import type { Row } from './utils/row-store';
 
@@ -34,18 +51,21 @@ const RESIZE_GRAB = { mouse: 4, touch: 12 };
 const RESIZE_EVENT_INTERVAL_MS = 50;
 /** Most rows measured by auto-fit; the rows in view are what counts, and 100k rows must not make it slow. */
 const AUTO_SIZE_SAMPLE_ROWS = 500;
+/** How far a touch may move and still count as a tap, in CSS px. */
+const TAP_SLOP = 8;
 
 /** Layers and renderers every grid starts with. */
 const builtIn = {
   background: 'background',
   content: 'content',
+  selection: 'selection',
   header: 'header',
   backgroundRenderer: 'background',
   valueRenderer: 'value',
   headerRenderer: 'header',
 };
 
-const BUILT_IN_LAYERS = [builtIn.background, builtIn.content, builtIn.header];
+const BUILT_IN_LAYERS = [builtIn.background, builtIn.content, builtIn.selection, builtIn.header];
 
 /** What the grid remembers about a cell between frames. */
 interface CellEntry {
@@ -118,7 +138,21 @@ interface AgApi {
   getRowNodeId: RowIdGetter;
 }
 
-export type { CellContext, CellRenderer, CellState, LayerOptions, RendererRef, SortDirection, SortKey };
+export type {
+  CellContext,
+  CellFocusDetail,
+  CellPosition,
+  CellRange,
+  CellRenderer,
+  CellState,
+  GridSelection,
+  LayerOptions,
+  RendererRef,
+  SelectionChangeDetail,
+  SelectionMode,
+  SortDirection,
+  SortKey,
+};
 
 export interface RowResizeDetail {
   rowId: RowId;
@@ -144,6 +178,32 @@ type RowDrag = DragProgress & { axis: 'row'; row: Row };
 
 type ResizeDrag = ColumnDrag | RowDrag;
 
+/** Which keys change what a click does: shift extends the selection, ctrl or cmd adds a range to it. */
+interface PointerModifiers {
+  extend: boolean;
+  additive: boolean;
+}
+
+/** A selection being dragged out with the pointer, from `anchor` to wherever the pointer is. */
+interface SelectionDrag {
+  pointerId: number;
+  anchor: CellPosition;
+  /** Pointer position in client coordinates. */
+  x: number;
+  y: number;
+  /** Pending animation frame of the scrolling that continues while the pointer rests outside the grid. */
+  frame: number | undefined;
+}
+
+/** A touch that may turn out to be a tap; a touch that moves is a scroll instead. */
+interface TouchTap {
+  pointerId: number;
+  x: number;
+  y: number;
+  cell: CellPosition;
+  modifiers: PointerModifiers;
+}
+
 declare global {
   interface HTMLElementTagNameMap {
     'canvas-grid': CanvasGridComponent;
@@ -154,6 +214,8 @@ declare global {
     columnresized: CustomEvent<ColumnResizeDetail>;
     rowresizing: CustomEvent<RowResizeDetail>;
     rowresized: CustomEvent<RowResizeDetail>;
+    selectionchange: CustomEvent<SelectionChangeDetail>;
+    cellfocus: CustomEvent<CellFocusDetail>;
   }
 }
 
@@ -182,6 +244,10 @@ class CanvasGridComponent extends HTMLElement {
   _backgroundColor = '#333';
   _headerBackgroundColor = '#262626';
   textColor = '#efefef';
+  /** Tint of selected cells; set it, then call `forceDraw`. */
+  selectionColor = 'rgba(74, 144, 217, 0.25)';
+  /** Colour of the outline of a selection and of the border around the active cell. */
+  selectionBorderColor = '#4a90d9';
   dataStore = new DataStore({
     getRowId: (row, index) => this.getRowId(row, index),
     getCellHeight: () => this.cellHeight,
@@ -251,6 +317,7 @@ class CanvasGridComponent extends HTMLElement {
     if (prevSize !== this.totalHeight) {
       this.refreshScrollbar();
     }
+    this.refitSelection();
     // rows that were removed or re-sorted changed position, and a normal draw only repaints cells whose value changed
     if (moved) this.forceDraw();
     this.requestRender();
@@ -271,6 +338,7 @@ class CanvasGridComponent extends HTMLElement {
 
     this.addLayer(builtIn.background, { alpha: false });
     this.addLayer(builtIn.content);
+    this.addLayer(builtIn.selection);
     this.addLayer(builtIn.header);
     this.registerRenderer(builtIn.backgroundRenderer, this.cellBackgroundRenderer);
     this.registerRenderer(builtIn.valueRenderer, this.cellValueRenderer);
@@ -491,6 +559,11 @@ class CanvasGridComponent extends HTMLElement {
     this.scrollArea.addEventListener('pointercancel', this.onResizePointerEnd);
     this.scrollArea.addEventListener('dblclick', this.onResizeDoubleClick);
     this.scrollArea.addEventListener('touchstart', this.onResizeTouchStart, { passive: false });
+    // after the resize listeners, which claim a press on a border first
+    this.scrollArea.addEventListener('pointerdown', this.onSelectPointerDown);
+    this.scrollArea.addEventListener('pointermove', this.onSelectPointerMove);
+    this.scrollArea.addEventListener('pointerup', this.onSelectPointerEnd);
+    this.scrollArea.addEventListener('pointercancel', this.onSelectPointerEnd);
     // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
     this.scrollArea.addEventListener('scroll', () => {
       this.isScrolling = true;
@@ -759,10 +832,12 @@ class CanvasGridComponent extends HTMLElement {
         }
       }
     }
+    if (redrawAll || this.selectionDirty) this.renderSelection();
     if (this.scrollYOffset > 0 || this.scrollXOffset > 0) {
       this.renderBrick();
     }
     this.hoverDirty = [];
+    this.selectionDirty = false;
     this.prevScrollYOffset = this.scrollYOffset;
     this.prevScrollXOffset = this.scrollXOffset;
     if (keepDrawing) this.requestRender();
@@ -791,6 +866,59 @@ class CanvasGridComponent extends HTMLElement {
     this.columnList = [];
     this.headers.forEach(header => this.columnList.push(header));
     this.columnOffsets = buildOffsets(this.columnList.map(header => header.width));
+  }
+
+  /** The selection must be drawn again on the next frame. */
+  private selectionDirty = false;
+
+  /** Whether the selection layer holds anything, so a grid that never selects never clears it. */
+  private selectionDrawn = false;
+
+  /** Tints each selected range and outlines the active cell: one rectangle per range, however many cells it covers. */
+  private renderSelection() {
+    const { ranges, active } = this.selectionModel;
+    if (ranges.length === 0 && !this.selectionDrawn) return;
+
+    const layer = this.requireLayer(builtIn.selection);
+    const { ctx } = layer;
+    layer.clear();
+    this.selectionDrawn = ranges.length > 0;
+    if (!this.selectionDrawn) return;
+
+    const left = this.showRowNumbers ? this.rowNumbersWidth : 0;
+    const top = this.showHeaders ? this.headerHeight : 0;
+    const originX = left - this.scrollXOffset;
+    const originY = top - this.scrollYOffset;
+    const { _dataCollection: rows, columnOffsets } = this;
+    const rectOf = (range: CellRange) => {
+      const bounds = resolve(range, rows.length, this.columnList.length);
+      if (!bounds) return undefined;
+
+      const x = originX + columnOffsets[bounds.left];
+      const y = originY + rows.topOf(bounds.top);
+      return { x, y, width: originX + columnOffsets[bounds.right + 1] - x, height: originY + rows.topOf(bounds.bottom + 1) - y };
+    };
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(left, top, this.viewportWidth - left, this.viewportHeight - top);
+    ctx.clip();
+    ctx.fillStyle = this.selectionColor;
+    ctx.strokeStyle = this.selectionBorderColor;
+    ctx.lineWidth = 1;
+    ranges.map(rectOf).forEach(rect => {
+      if (!rect) return;
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1);
+    });
+    const cell = active && rectOf({ rows: [active.row, active.row], columns: [active.column, active.column] });
+    if (cell) {
+      // the active cell is left untinted, like in a spreadsheet
+      ctx.clearRect(cell.x, cell.y, cell.width, cell.height);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cell.x + 1, cell.y + 1, cell.width - 2, cell.height - 2);
+    }
+    ctx.restore();
   }
 
   renderRowNumber(row: { index: number; height?: number }, y: number) {
@@ -1169,6 +1297,205 @@ class CanvasGridComponent extends HTMLElement {
     if (event.touches.length === 1 && this.findResizeTarget(touch.clientX, touch.clientY, 'touch')) event.preventDefault();
   };
 
+  private readonly selectionModel = new SelectionModel();
+
+  private mode: SelectionMode = 'none';
+
+  /**
+   * What the user can select with the pointer: `'none'` (default), one `'cell'`, `'range'`s of cells with whole rows and columns
+   * (like a spreadsheet), or whole `'row'`s or `'column'`s. `getSelection` and `setSelection` work in every mode; switching to `'none'` clears it.
+   */
+  set selectionMode(mode: SelectionMode) {
+    if (mode === this.mode) return;
+
+    this.mode = mode;
+    if (mode === 'none') this.clearSelection();
+  }
+
+  get selectionMode() {
+    return this.mode;
+  }
+
+  /** The selected ranges and the active cell, by displayed position; the ranges are copies. */
+  getSelection(): GridSelection {
+    return this.selectionModel.snapshot();
+  }
+
+  /**
+   * Selects the given ranges, with `active` in focus (the first cell of the last range by default). A range that leaves out `rows` or `columns`
+   * covers all of them. Positions beyond the data are cut off when it changes. Fires `selectionchange`, and `cellfocus` when the active cell moved.
+   */
+  setSelection(ranges: readonly CellRange[], active?: CellPosition) {
+    this.changeSelection(() => this.selectionModel.replace(ranges, active), false);
+  }
+
+  clearSelection() {
+    this.changeSelection(() => this.selectionModel.clear(), false);
+  }
+
+  private emitSelectionChange(selecting: boolean) {
+    this.dispatchEvent(new CustomEvent<SelectionChangeDetail>('selectionchange', { detail: { ...this.selectionModel.snapshot(), selecting } }));
+  }
+
+  private emitCellFocus() {
+    const { active } = this.selectionModel;
+    const row = active && this._dataCollection.at(active.row);
+    const column = active && this.columnList[active.column];
+    if (!active || !row || !column) return;
+
+    this.dispatchEvent(new CustomEvent<CellFocusDetail>('cellfocus', {
+      detail: { rowId: row.id, rowIndex: active.row, columnId: column.id, columnIndex: active.column },
+    }));
+  }
+
+  /** Applies a change to the selection, then redraws it and fires the events if something differs. */
+  private changeSelection(change: () => boolean, selecting: boolean) {
+    const previous = this.selectionModel.active && { ...this.selectionModel.active };
+    if (!change()) return false;
+
+    this.selectionDirty = true;
+    this.requestRender();
+    this.emitSelectionChange(selecting);
+    const { active } = this.selectionModel;
+    if (active && (active.row !== previous?.row || active.column !== previous.column)) this.emitCellFocus();
+    return true;
+  }
+
+  /** Cuts the selection to the data after rows or columns changed, and redraws it: ranges that reach the end follow the data. */
+  private refitSelection() {
+    if (this.selectionModel.ranges.length === 0) return;
+
+    this.changeSelection(() => this.selectionModel.clamp(this._dataCollection.length, this.columnList.length), false);
+    this.selectionDirty = true;
+  }
+
+  private selectDrag: SelectionDrag | undefined = undefined;
+
+  private touchTap: TouchTap | undefined = undefined;
+
+  /** Where in the grid, in px from its top left, a point of the viewport is. */
+  private offsetsOf(clientX: number, clientY: number) {
+    const rect = this.getBoundingClientRect();
+    const left = this.showRowNumbers ? this.rowNumbersWidth : 0;
+    const top = this.showHeaders ? this.headerHeight : 0;
+    return { x: clientX - rect.left, y: clientY - rect.top, left, top };
+  }
+
+  /** The cell under the pointer, or undefined over headers, row numbers, scrollbars and empty space. */
+  private cellAt(clientX: number, clientY: number): CellPosition | undefined {
+    const { x, y, left, top } = this.offsetsOf(clientX, clientY);
+    if (x < left || y < top || x > this.scrollArea.clientWidth || y > this.scrollArea.clientHeight) return undefined;
+
+    const contentX = x - left + this.scrollArea.scrollLeft;
+    const row = this._dataCollection.indexAt(y - top + this.scrollArea.scrollTop);
+    const column = columnAt(this.columnOffsets, contentX);
+    const pastColumns = contentX >= this.columnOffsets[this.columnOffsets.length - 1];
+    return column < 0 || pastColumns || row >= this._dataCollection.length ? undefined : { row, column };
+  }
+
+  /** The cell nearest to the pointer, wherever it is: dragging past an edge selects up to that edge. */
+  private nearestCell(clientX: number, clientY: number): CellPosition | undefined {
+    const rows = this._dataCollection.length;
+    if (rows === 0 || this.columnList.length === 0) return undefined;
+
+    const { x, y, left, top } = this.offsetsOf(clientX, clientY);
+    return {
+      row: Math.min(rows - 1, this._dataCollection.indexAt(Math.max(0, y - top) + this.scrollArea.scrollTop)),
+      column: columnAt(this.columnOffsets, Math.max(0, x - left) + this.scrollArea.scrollLeft),
+    };
+  }
+
+  /**
+   * Applies a press on a cell: plain selects it, shift extends from the active cell, ctrl or cmd adds a range.
+   * Returns the cell a drag from here starts at.
+   */
+  private pressCell(cell: CellPosition, { extend, additive }: PointerModifiers, selecting: boolean) {
+    const { selectionModel, mode } = this;
+    const { active } = selectionModel;
+    if (extend && active && mode !== 'cell') {
+      const range = rangeFor(mode, active, cell);
+      this.changeSelection(() => (additive ? selectionModel.extend(range, cell) : selectionModel.set(range, active, cell)), selecting);
+      return { ...active };
+    }
+
+    const range = rangeFor(mode, cell, cell);
+    this.changeSelection(() => (additive && mode !== 'cell' ? selectionModel.add(range, cell) : selectionModel.set(range, cell)), selecting);
+    return cell;
+  }
+
+  private dragSelectTo({ x, y, anchor }: SelectionDrag) {
+    const cell = this.nearestCell(x, y);
+    if (!cell || this.mode === 'cell') return;
+
+    const range = rangeFor(this.mode, anchor, cell);
+    this.changeSelection(() => this.selectionModel.extend(range, cell), true);
+  }
+
+  private readonly onSelectPointerDown = (event: PointerEvent) => {
+    if (this.mode === 'none' || event.button !== 0 || this.resizeDrag) return;
+
+    const cell = this.cellAt(event.clientX, event.clientY);
+    if (!cell) return;
+
+    const modifiers = { extend: event.shiftKey, additive: event.ctrlKey || event.metaKey };
+    if (event.pointerType === 'touch') {
+      // a touch that moves scrolls, so it only selects when it ends where it started
+      this.touchTap = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, cell, modifiers };
+      return;
+    }
+
+    event.preventDefault();
+    this.scrollArea.setPointerCapture(event.pointerId);
+    const anchor = this.pressCell(cell, modifiers, true);
+    this.selectDrag = { pointerId: event.pointerId, anchor, x: event.clientX, y: event.clientY, frame: undefined };
+  };
+
+  private readonly onSelectPointerMove = (event: PointerEvent) => {
+    const { touchTap, selectDrag } = this;
+    if (touchTap && Math.hypot(event.clientX - touchTap.x, event.clientY - touchTap.y) > TAP_SLOP) this.touchTap = undefined;
+    if (!selectDrag || selectDrag.pointerId !== event.pointerId) return;
+
+    selectDrag.x = event.clientX;
+    selectDrag.y = event.clientY;
+    this.dragSelectTo(selectDrag);
+    selectDrag.frame ??= requestAnimationFrame(this.scrollWhileDragging);
+  };
+
+  /** Keeps scrolling, and extending the selection with it, for as long as the pointer is held outside the cells. */
+  private readonly scrollWhileDragging = () => {
+    const drag = this.selectDrag;
+    if (!drag) return;
+
+    drag.frame = undefined;
+    const { x, y, left, top } = this.offsetsOf(drag.x, drag.y);
+    const dx = dragScrollSpeed(x, left, this.scrollArea.clientWidth);
+    const dy = dragScrollSpeed(y, top, this.scrollArea.clientHeight);
+    if (dx === 0 && dy === 0) return;
+
+    this.scrollArea.scrollBy(dx, dy);
+    this.dragSelectTo(drag);
+    drag.frame = requestAnimationFrame(this.scrollWhileDragging);
+  };
+
+  private readonly onSelectPointerEnd = (event: PointerEvent) => {
+    const { touchTap, selectDrag } = this;
+    if (touchTap?.pointerId === event.pointerId) {
+      this.touchTap = undefined;
+      if (event.type === 'pointerup') this.pressCell(touchTap.cell, touchTap.modifiers, false);
+      return;
+    }
+    if (!selectDrag || selectDrag.pointerId !== event.pointerId) return;
+
+    this.endSelectDrag();
+    if (this.scrollArea.hasPointerCapture(event.pointerId)) this.scrollArea.releasePointerCapture(event.pointerId);
+    this.emitSelectionChange(false);
+  };
+
+  private endSelectDrag() {
+    if (this.selectDrag?.frame !== undefined) cancelAnimationFrame(this.selectDrag.frame);
+    this.selectDrag = undefined;
+  }
+
   get totalHeight() {
     return this._dataCollection.totalHeight;
   }
@@ -1219,6 +1546,7 @@ class CanvasGridComponent extends HTMLElement {
     if (!Array.isArray(data)) return;
     this.dataStore.setRows(data);
     this.refreshScrollbar();
+    this.refitSelection();
     this.forceDraw();
   }
 
@@ -1252,12 +1580,14 @@ class CanvasGridComponent extends HTMLElement {
       });
       this.updateColumnLayout();
       this.refreshScrollbar();
+      this.refitSelection();
       this.forceDraw();
     }
   }
 
   disconnectedCallback() {
     this.cancelRender();
+    this.endSelectDrag();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.resizeObserver?.disconnect();
     this.pixelRatioQuery?.removeEventListener('change', this.watchPixelRatio);

@@ -38,6 +38,7 @@ Column object fields (`ColumnDefinition`):
 | `autoSizeColumns(ids?)` | Fits the given columns (all by default) to their header and the rows in view, at most 500 of them, so it stays fast with any number of rows |
 | `setRowHeight(height \| fn)` | Sets every row's height: a number in px, also used for rows added later (it replaces `cellHeight`), or a function of the row id returning one. The function runs for existing rows now and for each added row once its values are stored, so `getRowData(id).values` works inside it. Replaces heights set for single rows. Fires no events |
 | `setRowHeightById(id, height)` | Sets one row's height (at least 8 px) and fires `rowresized`. It sticks to the row id through sorting, updates and `setValues` |
+| `getSelection()` / `setSelection(ranges, active?)` / `clearSelection()` | Read, replace and clear the selected ranges, see [Selection](selection.md) |
 | `getColumnState()` / `setColumnState(state)` | `[{ id, width }]` in display order; save the first and pass it to the second to restore widths. Unknown ids are skipped |
 | `refreshFonts()` | Re-reads inherited fonts and redraws. Call it after changing the CSS font while `font` / `headerFont` are `'inherit'`; loading web fonts does it automatically |
 | `forceDraw()` | Clears and redraws everything |
@@ -61,6 +62,8 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 | `textOverflow` | `'clip'` | Text wider than its cell: `'clip'` cuts it off at the cell edge and measures nothing, `'ellipsis'` shortens it and ends it with `…`, which means measuring it (see below) |
 | `direction` | `'ltr'` | `'rtl'`, or `'auto'` to pick the direction per cell from its first letter. Right-to-left text is aligned to the right of the cell, and an ellipsis ends it on the left |
 | `getRowId` | `(row) => row.id` | Derives the row id; assign your own to key rows differently |
+| `selectionMode` | `'none'` | What the user can select: `'cell'`, `'range'`, `'row'` or `'column'`, see [Selection](selection.md) |
+| `selectionColor` / `selectionBorderColor` | blue | Tint and outline of the selection; call `forceDraw()` after setting them |
 | `showHeaders` | `true` | Show the header row |
 | `showRowNumbers` | `true` | Show the row-number column |
 | `rowNumbersWidth` | `30` | Width of the row-number column |

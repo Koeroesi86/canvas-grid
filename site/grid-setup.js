@@ -85,6 +85,7 @@ export const configureGrid = grid => {
   grid.style.fontSize = '12px';
   grid.font = 'inherit';
   grid.headerFont = 'inherit';
+  grid.selectionMode = 'range';
   applyFontFamily(grid, Object.keys(fontFamilies)[0]);
   grid.addLayer('trend', { before: 'header' });
   grid.registerRenderer('trend', trendRenderer);
