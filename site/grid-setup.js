@@ -53,6 +53,14 @@ export const bindFontPicker = (select, grid, onChange) => {
   });
 };
 
+/** Applies the theme picker's choice: `light` or `dark` pins the theme, anything else follows `prefers-color-scheme`. */
+export const bindThemePicker = (select, grid) => {
+  select.addEventListener('change', () => {
+    if (select.value === 'light' || select.value === 'dark') grid.setAttribute('theme', select.value);
+    else grid.removeAttribute('theme');
+  });
+};
+
 /** The row count each grid shows, to size its row-number column again when the font changes. */
 const rowCounts = new WeakMap();
 
