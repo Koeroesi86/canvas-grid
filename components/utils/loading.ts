@@ -27,7 +27,12 @@ class Loading extends Renderer<LoadingOptions> {
     this.offCanvas.height = 250;
     this.offCtx = getContext2d(this.offCanvas);
     this.offCtx.lineWidth = 0.5;
-    this.offCtx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    this.setColor('rgba(255, 255, 255, 0.75)');
+  }
+
+  /** The colour the loader is drawn in; it takes a moment to fully replace the old one. */
+  setColor(color: string) {
+    this.offCtx.strokeStyle = color;
   }
 
   updateLoader() {
