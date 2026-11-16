@@ -41,6 +41,32 @@ describe('DataStore', () => {
     });
   });
 
+  describe('setValue', () => {
+    beforeEach(() => {
+      store.setRows([{ id: 'a', price: 3 }, { id: 'b', price: 1 }, { id: 'c', price: 2 }]);
+    });
+
+    it('writes a cell at once, stamping when it changed', () => {
+      expect(store.setValue('a', 'price', 9, 1234)).toBe(false);
+      expect(store.getValue('a', 'price')).toBe(9);
+      expect(store.getUpdatedAt('a', 'price')).toBe(1234);
+    });
+
+    it('re-sorts when the cell is in the sort model, and says rows moved', () => {
+      store.setSortModel([{ columnId: 'price', direction: 'asc' }]);
+      expect(store.rows.keys).toEqual(['b', 'c', 'a']);
+      expect(store.setValue('a', 'price', 0)).toBe(true);
+      expect(store.rows.keys).toEqual(['a', 'b', 'c']);
+    });
+
+    it('ignores rows that do not exist and values that did not change', () => {
+      expect(store.setValue('zz', 'price', 1)).toBe(false);
+      expect(store.getValue('zz', 'price')).toBeUndefined();
+      store.setValue('b', 'price', 1, 99);
+      expect(store.getUpdatedAt('b', 'price')).not.toBe(99);
+    });
+  });
+
   describe('queued transactions', () => {
     it('nothing changes until flushed', () => {
       store.queueUpdate({ id: 1, value: 'a' });

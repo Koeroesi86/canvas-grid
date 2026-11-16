@@ -55,3 +55,17 @@ export const stepWithin = (bounds: Bounds, from: CellPosition, axis: Axis, backw
  * unchanged when it is already visible, and the span's start wins when it is larger than the viewport.
  */
 export const revealOffset = (start: number, end: number, scroll: number, size: number) => Math.min(start, Math.max(scroll, end - size));
+
+/**
+ * Where the selection goes after an edit ends on `from`: Enter (`axis` `'row'`) moves down, Tab (`'column'`) right, one back with `backwards`.
+ * Tab continues on the next row past the last column; at the edge of the grid the cell stays.
+ */
+export const stepAfterEdit = (from: CellPosition, axis: Axis, backwards: boolean, { rowCount, columnCount }: GridSize): CellPosition => {
+  const direction = backwards ? -1 : 1;
+  const inside = (row: number, column: number) => row >= 0 && row < rowCount && column >= 0 && column < columnCount;
+  if (axis === 'row') return inside(from.row + direction, from.column) ? { row: from.row + direction, column: from.column } : from;
+  if (inside(from.row, from.column + direction)) return { row: from.row, column: from.column + direction };
+
+  const row = from.row + direction;
+  return inside(row, 0) ? { row, column: backwards ? columnCount - 1 : 0 } : from;
+};

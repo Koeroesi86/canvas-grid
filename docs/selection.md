@@ -48,6 +48,7 @@ Clicking a cell gives the grid keyboard focus; a grid with a `selectionMode` tak
 | Enter / Shift+Enter | Move the active cell down / up inside the selection, continuing on the next column and wrapping at the end. With one cell selected, move the selection |
 | Tab / Shift+Tab | The same across and back. With one cell selected they are left to the browser, so the grid never traps keyboard focus |
 | Escape | Collapse the selection to the active cell |
+| F2, typing, Enter on one cell | Start [editing](editing.md) the active cell, when its column is `editable`. Without one, Enter keeps moving the selection |
 
 Keys the page already handled (`defaultPrevented`) and Alt combinations are ignored.
 
@@ -67,7 +68,7 @@ grid.addEventListener('selectioncopy', ({ detail }) => {
 
 ## Context menu
 
-With a `selectionMode` other than `'none'`, a right click, a long press, the menu key or Shift+F10 opens the grid's own menu instead of the browser's. It holds one entry, **Copy**, which calls `copySelection()`, so `selectioncopy` applies to it too. The menu is plain HTML (`role="menu"` with `menuitem` buttons) in the top layer, so it is not clipped by the grid, and it closes on Escape, an outside click, scrolling or picking an entry. Arrow keys, Home and End move through the entries and Enter picks one.
+With a `selectionMode` other than `'none'`, a right click, a long press, the menu key or Shift+F10 opens the grid's own menu instead of the browser's. It holds two entries: **Edit**, which opens the [editor](editing.md) on the cell under the pointer (greyed out when that cell isn't editable, or the menu was opened over a header), and **Copy**, which calls `copySelection()`, so `selectioncopy` applies to it too. The menu is plain HTML (`role="menu"` with `menuitem` buttons) in the top layer, so it is not clipped by the grid, and it closes on Escape, an outside click, scrolling or picking an entry. Arrow keys, Home and End move through the entries and Enter picks one.
 
 A right click inside the selection keeps it; elsewhere it first selects what was clicked: the cell, or the whole column or row for a header or row number. The keyboard opens the menu at the active cell.
 

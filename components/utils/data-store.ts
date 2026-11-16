@@ -131,6 +131,21 @@ class DataStore {
     return row ? this.columns.get(String(columnKey))?.getUpdatedAt(row.slot) : undefined;
   }
 
+  /**
+   * Writes one cell right away, skipping the queue, and re-sorts when it is the sort key.
+   * Returns whether rows changed position; false too when the row does not exist.
+   */
+  setValue(rowId: RowId, columnKey: Key, value: unknown, now = getNow()) {
+    const row = this.rows.get(rowId);
+    if (!row) return false;
+
+    this.applyValue(rowId, row.slot, String(columnKey), value, now);
+    if (!this.sortDirty) return false;
+
+    this.sortChanges();
+    return true;
+  }
+
   queueUpdate(row: RowInput) {
     this.pending.push({ type: 'update', row });
   }

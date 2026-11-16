@@ -56,6 +56,72 @@ canvas-grid {
     }
   }
 
+  & .cellEditor {
+    position: absolute;
+    z-index: 12;
+    display: flex;
+    background: var(--cg-background, #333);
+    color: var(--cg-text-color, #efefef);
+    outline: 2px solid var(--cg-selection-border-color, #4a90d9);
+    outline-offset: -2px;
+
+    &.invalid {
+      outline-color: var(--cg-invalid-color, #d9534f) !important;
+    }
+
+    /* text sits where the canvas draws it: the grid's cell padding from the left, centred vertically */
+    & > input:not([type="checkbox"]) {
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      line-height: normal;
+      padding: 0 var(--cg-editor-padding-right, 3px) 0 var(--cg-editor-padding-left, 3px);
+    }
+
+    & > input.number {
+      font-variant-numeric: tabular-nums;
+    }
+
+    & > .cellSelect {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      padding: 0 var(--cg-editor-padding-right, 3px) 0 var(--cg-editor-padding-left, 3px);
+      cursor: pointer;
+      outline: 0;
+      position: relative;
+
+      /* the arrow */
+      &::after {
+        content: "";
+        margin-left: auto;
+        flex: none;
+        border: 4px solid transparent;
+        border-top-color: currentColor;
+        border-bottom-width: 0;
+      }
+
+      & > .cellSelectLabel {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+    }
+
+    /* the box starts at the same left edge as the value drawn on the canvas */
+    & > input[type="checkbox"] {
+      margin: auto 0 auto var(--cg-editor-padding-left, 3px);
+    }
+  }
+
   & .resizeGuide {
     display: none;
     position: absolute;
@@ -121,3 +187,36 @@ canvas-grid .contextMenu {
     }
   }
 }
+
+.cellSelectList {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 2px 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: var(--cg-editor-background, #333);
+  color: var(--cg-editor-text, #efefef);
+  font: inherit;
+  border: 1px solid var(--cg-editor-border, #555);
+  outline: 1px solid var(--cg-editor-accent, #4a90d9);
+  outline-offset: -1px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  scrollbar-width: thin;
+
+  & > [role="option"] {
+    padding: 3px 8px;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--cg-editor-highlight, rgba(74, 144, 217, 0.25));
+    }
+
+    &.active {
+      background: var(--cg-editor-accent, #4a90d9);
+      color: var(--cg-editor-background, #333);
+    }
+  }
+}
+

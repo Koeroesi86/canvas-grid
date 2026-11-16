@@ -33,19 +33,34 @@ import SelectionModel, {
   shapeOf,
 } from './utils/selection';
 import type { Axis } from './utils/selection';
-import { moveTarget, revealOffset, stepWithin } from './utils/selection-navigation';
+import { moveTarget, revealOffset, stepAfterEdit, stepWithin } from './utils/selection-navigation';
 import { toTsv } from './utils/clipboard';
 import ContextMenu from './utils/context-menu';
+import { createEditor, startsByTyping } from './utils/cell-editors';
+import { resolveEdit } from './utils/edit-value';
+import type { EditResult } from './utils/edit-value';
 import type { LayerOptions } from './utils/layer';
 import type {
+  BuiltInCellEditor,
   CellContext,
+  CellEditable,
+  CellEditContext,
+  CellEditEndDetail,
+  CellEditor,
+  CellEditorContext,
+  CellEditorInstance,
+  CellEditStartDetail,
   CellFocusDetail,
   CellPosition,
   CellRange,
   CellRenderer,
   CellState,
+  CellValueChange,
+  CellValueChangedDetail,
   ContextMenuDetail,
   ContextMenuItem,
+  CustomCellEditor,
+  EditOutOfView,
   GridSelection,
   Key,
   RendererRef,
@@ -55,6 +70,7 @@ import type {
   SelectionCopyDetail,
   SelectionLevel,
   SelectionMode,
+  SelectOption,
   SortDirection,
   SortKey,
 } from './types';
@@ -140,6 +156,16 @@ export interface ColumnHeader {
   headerFont?: string;
   /** Renderer drawing the header of this column. */
   headerRenderer: RendererRef;
+  /** Whether the user can edit this column's cells: `true`, or a function asked per cell. Defaults to `false`. `startEditing` follows it too. */
+  editable?: CellEditable;
+  /** Editor over the cell: `'text'` (default), `'number'`, `'checkbox'`, `{ type: 'select', options }`, or a function building a custom one. */
+  cellEditor?: CellEditor;
+  /** Turns the text of the text and number editors into the value to store; throw to mark the text invalid. Defaults to the text, or a number for `'number'`. */
+  valueParser?: (text: string, change: CellValueChange) => unknown;
+  /** Says whether a parsed value may be stored: `true`, or `false` / a message for an invalid-state editor that cannot be committed. */
+  validator?: (value: unknown, change: CellValueChange) => boolean | string;
+  /** Applies a committed edit instead of the grid storing it. Return `false` to reject the edit and keep the editor open. */
+  valueSetter?: (change: CellValueChange) => boolean | void;
 }
 
 /** What `getColumnState` returns and `setColumnState` takes: enough to restore the column widths later. */
@@ -173,20 +199,33 @@ interface AgApi {
 }
 
 export type {
+  BuiltInCellEditor,
   CellContext,
+  CellEditable,
+  CellEditContext,
+  CellEditEndDetail,
+  CellEditor,
+  CellEditorContext,
+  CellEditorInstance,
+  CellEditStartDetail,
   CellFocusDetail,
   CellPosition,
   CellRange,
   CellRenderer,
   CellState,
+  CellValueChange,
+  CellValueChangedDetail,
   ContextMenuDetail,
   ContextMenuItem,
+  CustomCellEditor,
+  EditOutOfView,
   GridSelection,
   LayerOptions,
   RendererRef,
   SelectionChangeDetail,
   SelectionCopyDetail,
   SelectionMode,
+  SelectOption,
   SortDirection,
   SortKey,
 };
@@ -241,6 +280,13 @@ interface SelectionDrag {
   frame: number | undefined;
 }
 
+/** The cell being edited, the editor over it and the value the cell had when editing began. */
+interface EditSession {
+  cell: CellEditContext;
+  instance: CellEditorInstance;
+  wrapper: HTMLElement;
+}
+
 /** A touch that may turn out to be a tap; a touch that moves is a scroll instead. */
 interface TouchTap {
   pointerId: number;
@@ -264,6 +310,9 @@ declare global {
     cellfocus: CustomEvent<CellFocusDetail>;
     selectioncopy: CustomEvent<SelectionCopyDetail>;
     gridcontextmenu: CustomEvent<ContextMenuDetail>;
+    celleditstart: CustomEvent<CellEditStartDetail>;
+    celleditend: CustomEvent<CellEditEndDetail>;
+    cellvaluechanged: CustomEvent<CellValueChangedDetail>;
   }
 }
 
@@ -666,6 +715,7 @@ class CanvasGridComponent extends HTMLElement {
     this.scrollArea.addEventListener('pointermove', this.onSelectPointerMove);
     this.scrollArea.addEventListener('pointerup', this.onSelectPointerEnd);
     this.scrollArea.addEventListener('pointercancel', this.onSelectPointerEnd);
+    this.scrollArea.addEventListener('dblclick', this.onEditDoubleClick);
     this.addEventListener('keydown', this.onKeyDown);
     this.addEventListener('copy', this.onCopy);
     this.addEventListener('contextmenu', this.onContextMenu);
@@ -918,6 +968,7 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   draw(forced = false) {
+    if (this.edit) this.positionEditor();
     const now = new Date().valueOf();
     const redrawAll = forced || this.hasScrolled();
     this.cell.now = now;
@@ -1926,7 +1977,8 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent) => {
-    if (this.mode === 'none' || event.defaultPrevented || event.altKey || !this.handleSelectionKey(event)) return;
+    if (this.mode === 'none' || event.defaultPrevented || event.altKey) return;
+    if (!this.handleEditKey(event) && !this.handleSelectionKey(event)) return;
 
     event.preventDefault();
   };
@@ -1979,6 +2031,7 @@ class CanvasGridComponent extends HTMLElement {
 
   /** The entries of the context menu. Replace them to change the menu; an empty list keeps the browser's own menu. */
   contextMenuItems: ContextMenuItem[] = [
+    { id: 'edit', label: 'Edit', disabled: ({ row, column }) => !this.canEditAt(row, column), run: ({ row, column }) => void this.editAt(row, column) },
     { id: 'copy', label: 'Copy', disabled: () => this.selectionModel.ranges.length === 0, run: () => void this.copySelection() },
   ];
 
@@ -2040,6 +2093,246 @@ class CanvasGridComponent extends HTMLElement {
       disabled: typeof disabled === 'function' ? disabled(detail) : disabled ?? false,
     })));
   };
+
+  /** What happens to an edit when its cell scrolls out of view: `'cancel'` (default) drops it, `'commit'` writes it, `'keep'` hides the editor until the cell is back. */
+  editOutOfView: EditOutOfView = 'cancel';
+
+  private edit: EditSession | undefined;
+
+  private cellOf(rowId: RowId, columnId: Key): CellEditContext | undefined {
+    const row = this._dataCollection.get(rowId);
+    const column = this.headers.get(columnId);
+    if (!row || !column) return undefined;
+
+    return { rowId: row.id, rowIndex: row.index, columnId: column.id, columnIndex: column.index, value: this.dataStore.getValue(row.id, column.id) };
+  }
+
+  private canEdit(cell: CellEditContext) {
+    const editable = this.headers.get(cell.columnId)?.editable;
+    return typeof editable === 'function' ? editable(cell) : editable === true;
+  }
+
+  /**
+   * Puts an editor over a cell, committing the edit in progress first. Returns whether one opened: the cell has to exist and be `editable`,
+   * and a cancelled `celleditstart` or an edit that cannot be committed stop it. The cell is scrolled into view.
+   */
+  startEditing(rowId: RowId, columnId: Key) {
+    return this.openEditor(rowId, columnId, undefined);
+  }
+
+  /** Ends the edit in progress: commits it, or drops it with `cancel`. Returns false when there was none, or the value is invalid or rejected, which keeps the editor open. */
+  stopEditing(cancel = false) {
+    return this.finishEdit(cancel);
+  }
+
+  private openEditor(rowId: RowId, columnId: Key, initialText: string | undefined) {
+    const cell = this.cellOf(rowId, columnId);
+    if (!cell || !this.canEdit(cell) || !this.finishEditIfOpen()) return false;
+    if (!this.dispatchEvent(new CustomEvent<CellEditStartDetail>('celleditstart', { detail: cell, cancelable: true }))) return false;
+
+    this.revealCell({ row: cell.rowIndex, column: cell.columnIndex });
+    const instance = createEditor(this.headers.get(columnId)?.cellEditor, {
+      ...cell,
+      initialText,
+      commit: () => void this.finishEdit(false),
+      cancel: () => void this.finishEdit(true),
+    });
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cellEditor';
+    wrapper.style.colorScheme = this.themeName;
+    // the resolved theme, which also covers a page that sets the theme by option rather than by CSS
+    wrapper.style.background = this.backgroundColor;
+    wrapper.style.color = this.textColor;
+    wrapper.style.outlineColor = this.theme.selectionBorder;
+    // for parts that leave the wrapper, such as the dropdown's list in the top layer
+    wrapper.style.setProperty('--cg-editor-background', this.backgroundColor);
+    wrapper.style.setProperty('--cg-editor-text', this.textColor);
+    wrapper.style.setProperty('--cg-editor-border', this.theme.border);
+    wrapper.style.setProperty('--cg-editor-accent', this.theme.selectionBorder);
+    wrapper.style.setProperty('--cg-editor-highlight', this.theme.selection);
+    wrapper.style.setProperty('--cg-editor-padding-left', `${this.cellPadding.left}px`);
+    wrapper.style.setProperty('--cg-editor-padding-right', `${this.cellPadding.right}px`);
+    wrapper.style.font = this.headers.get(columnId)?.font ?? this.font;
+    wrapper.append(instance.element);
+    wrapper.addEventListener('keydown', this.onEditorKeyDown);
+    wrapper.addEventListener('focusout', this.onEditorFocusOut);
+    wrapper.addEventListener('input', () => this.showValidity());
+    wrapper.addEventListener('change', () => this.showValidity());
+    this.append(wrapper);
+    this.edit = { cell, instance, wrapper };
+    this.positionEditor();
+    if (instance.focus) instance.focus();
+    else instance.element.focus({ preventScroll: true });
+    return true;
+  }
+
+  private finishEditIfOpen() {
+    return !this.edit || this.finishEdit(false);
+  }
+
+  /** The editor's value parsed and validated against the value the cell holds now. */
+  private checkEdit(edit: EditSession): EditResult {
+    const column = this.headers.get(edit.cell.columnId);
+    const oldValue = this.dataStore.getValue(edit.cell.rowId, edit.cell.columnId);
+    return resolveEdit(
+      edit.instance.getValue(),
+      column?.cellEditor,
+      { parse: column?.valueParser, validate: column?.validator },
+      { ...edit.cell, value: oldValue, oldValue },
+    );
+  }
+
+  private showValidity(result?: EditResult) {
+    const { edit } = this;
+    if (!edit) return;
+
+    const { ok, message } = { message: undefined, ...(result ?? this.checkEdit(edit)) };
+    edit.wrapper.classList.toggle('invalid', !ok);
+    edit.wrapper.title = message ?? '';
+    edit.instance.element.setAttribute('aria-invalid', String(!ok));
+  }
+
+  /** Writes a committed value, through the column's `valueSetter` when it has one. Returns false when that rejected it. */
+  private applyEdit(edit: EditSession, newValue: unknown) {
+    const { cell } = edit;
+    const oldValue = this.dataStore.getValue(cell.rowId, cell.columnId);
+    // an untouched cell is left alone, so a value streamed in meanwhile is not overwritten by the stale one the editor started from
+    if (newValue === cell.value) return true;
+
+    const setter = this.headers.get(cell.columnId)?.valueSetter;
+    if (setter && setter({ ...cell, value: oldValue, oldValue, newValue }) === false) return false;
+    if (!setter && this.dataStore.setValue(cell.rowId, cell.columnId, newValue)) this.forceDraw();
+    if (!setter) this.requestRender();
+    this.dispatchEvent(new CustomEvent<CellValueChangedDetail>('cellvaluechanged', { detail: { ...cell, value: newValue, oldValue, newValue } }));
+    return true;
+  }
+
+  private finishEdit(cancel: boolean) {
+    const { edit } = this;
+    if (!edit) return false;
+
+    const result = cancel ? undefined : this.checkEdit(edit);
+    if (result && !result.ok) {
+      this.showValidity(result);
+      return false;
+    }
+    const newValue = result?.ok ? result.value : undefined;
+    if (result && !this.applyEdit(edit, newValue)) {
+      this.showValidity({ ok: false, message: 'Rejected' });
+      return false;
+    }
+
+    this.closeEditor(edit);
+    this.dispatchEvent(new CustomEvent<CellEditEndDetail>('celleditend', { detail: { ...edit.cell, cancelled: cancel, newValue } }));
+    return true;
+  }
+
+  private closeEditor({ wrapper, instance }: EditSession) {
+    const hadFocus = wrapper.contains(document.activeElement);
+    this.edit = undefined;
+    instance.destroy?.();
+    wrapper.remove();
+    if (hadFocus) this.focus({ preventScroll: true });
+  }
+
+  /** Keeps the editor on its cell as the grid scrolls, resizes or re-sorts; applies `editOutOfView` once the cell is gone from the view. */
+  private positionEditor() {
+    const { edit, scrollArea, columnOffsets } = this;
+    if (!edit) return;
+
+    const cell = this.cellOf(edit.cell.rowId, edit.cell.columnId);
+    if (!cell) {
+      this.finishEdit(true);
+      return;
+    }
+    edit.cell.rowIndex = cell.rowIndex;
+    edit.cell.columnIndex = cell.columnIndex;
+
+    const { left, top } = this.offsetsOf(0, 0);
+    const rows = this._dataCollection;
+    const x = left + columnOffsets[cell.columnIndex] - Math.round(scrollArea.scrollLeft);
+    const y = top + rows.topOf(cell.rowIndex) - Math.round(scrollArea.scrollTop);
+    const width = columnOffsets[cell.columnIndex + 1] - columnOffsets[cell.columnIndex];
+    const height = rows.topOf(cell.rowIndex + 1) - rows.topOf(cell.rowIndex);
+    // the part under the headers, the row numbers or the scrollbars is cut off, so the editor never covers them
+    const cut = {
+      top: Math.max(0, top - y),
+      right: Math.max(0, x + width - scrollArea.clientWidth),
+      bottom: Math.max(0, y + height - scrollArea.clientHeight),
+      left: Math.max(0, left - x),
+    };
+    const hidden = cut.top >= height || cut.bottom >= height || cut.left >= width || cut.right >= width;
+    if (hidden && this.editOutOfView !== 'keep' && this.finishEdit(this.editOutOfView === 'cancel')) return;
+
+    const { style } = edit.wrapper;
+    style.left = `${x}px`;
+    style.top = `${y}px`;
+    style.width = `${width}px`;
+    style.height = `${height}px`;
+    // clipped rather than hidden, which would take the focus away
+    style.clipPath = hidden ? 'inset(100%)' : `inset(${cut.top}px ${cut.right}px ${cut.bottom}px ${cut.left}px)`;
+    style.pointerEvents = hidden ? 'none' : '';
+    edit.instance.place?.(!hidden);
+  }
+
+  /** Enter and Tab commit and move the selection on, Escape drops the edit; the keys stay inside the editor, which the grid would otherwise act on. */
+  private readonly onEditorKeyDown = (event: KeyboardEvent) => {
+    event.stopPropagation();
+    const { edit } = this;
+    const { key, shiftKey } = event;
+    if (!edit || event.isComposing || !['Escape', 'Enter', 'Tab'].includes(key)) return;
+
+    event.preventDefault();
+    const { rowIndex: row, columnIndex: column } = edit.cell;
+    if (!this.finishEdit(key === 'Escape') || key === 'Escape' || this.mode === 'none') return;
+
+    const target = stepAfterEdit({ row, column }, key === 'Enter' ? 'row' : 'column', shiftKey, this.gridSize);
+    this.moveTo(target);
+  };
+
+  /** Leaving the editor commits it, or drops it when its value is invalid. Switching windows leaves it be. */
+  private readonly onEditorFocusOut = (event: FocusEvent) => {
+    const { edit } = this;
+    if (!edit || !document.hasFocus() || (event.relatedTarget instanceof Node && edit.wrapper.contains(event.relatedTarget))) return;
+    if (!this.finishEdit(false)) this.finishEdit(true);
+  };
+
+  /** The cell at a displayed row and column, when both exist. */
+  private cellAt(row: number | undefined, column: number | undefined) {
+    const rowData = row === undefined ? undefined : this._dataCollection.at(row);
+    const header = column === undefined ? undefined : this.columnList[column];
+    return rowData && header ? this.cellOf(rowData.id, header.id) : undefined;
+  }
+
+  private canEditAt(row: number | undefined, column: number | undefined) {
+    const cell = this.cellAt(row, column);
+    return cell !== undefined && this.canEdit(cell);
+  }
+
+  private editAt(row: number | undefined, column: number | undefined) {
+    const cell = this.cellAt(row, column);
+    return cell !== undefined && this.openEditor(cell.rowId, cell.columnId, undefined);
+  }
+
+  private readonly onEditDoubleClick = (event: MouseEvent) => {
+    const hit = this.hitAt(event.clientX, event.clientY);
+    if (hit?.zone === 'cell') this.editAt(hit.row, hit.column);
+  };
+
+  /** Starts editing the active cell for F2, Enter (with a single cell selected) or a typed character, which begins the text. */
+  private handleEditKey(event: KeyboardEvent) {
+    const { active, ranges } = this.selectionModel;
+    const row = active && this._dataCollection.at(active.row);
+    const column = active && this.columnList[active.column];
+    if (!row || !column) return false;
+
+    const { key, shiftKey } = event;
+    const bounds = ranges.length === 1 ? resolve(ranges[0], this._dataCollection.length, this.columnList.length) : undefined;
+    const single = bounds !== undefined && bounds.top === bounds.bottom && bounds.left === bounds.right;
+    const typed = key.length === 1 && !event.ctrlKey && !event.metaKey && !(key === ' ' && shiftKey);
+    if (key === 'F2' || (key === 'Enter' && !shiftKey && single)) return this.openEditor(row.id, column.id, undefined);
+    return typed && startsByTyping(column.cellEditor) && this.openEditor(row.id, column.id, key);
+  }
 
   get totalHeight() {
     return this._dataCollection.totalHeight;
@@ -2131,6 +2424,7 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.finishEdit(true);
     this.cancelRender();
     this.endSelectDrag();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
