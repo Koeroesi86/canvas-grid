@@ -51,6 +51,20 @@ Clicking a cell gives the grid keyboard focus; a grid with a `selectionMode` tak
 
 Keys the page already handled (`defaultPrevented`) and Alt combinations are ignored.
 
+## Clipboard
+
+Ctrl/Cmd+C (or Edit > Copy) with the grid focused copies the newest range as tab-separated text, a row per line, with the cells' **formatted** values, as they are shown (`valueFormatter` applied; sorting, by contrast, uses raw values). Fields holding a tab, a line break or a quote are wrapped in quotes with the quotes doubled, so spreadsheets paste it into cells correctly. Headers and row numbers are not copied. Other ranges of a multi-range selection are left out. This uses the browser's `copy` event, so it works without the async clipboard API or any permission.
+
+A range holds at most 1,000,000 cells per copy; whole rows beyond that are left off and `truncated` is `true`. Nothing is copied when nothing is selected or the mode is `'none'`, and the browser's own copy takes over.
+
+The cancelable `selectioncopy` event fires first, with the text in `detail`: change `detail.text` to put something else on the clipboard, or call `preventDefault()` to copy nothing.
+
+```js
+grid.addEventListener('selectioncopy', ({ detail }) => {
+  detail.text = detail.text.replaceAll('\t', ',');  // comma-separated instead
+});
+```
+
 ## Model
 
 A selection is a list of **ranges** and one **active cell**. A range names its rows and columns by displayed position, both ends included:
@@ -96,5 +110,6 @@ Headers and row numbers show what is selected: a column header whose column has 
 | --- | --- | --- |
 | `selectionchange` | The ranges or the active cell changed, also from the API | `{ ranges, active, selecting }`. `selecting` is `true` while the pointer is down, and a final event with `false` follows when it is released |
 | `cellfocus` | The active cell moved to another cell | `{ rowId, rowIndex, columnId, columnIndex }` |
+| `selectioncopy` | The user copies, before anything goes to the clipboard. Cancelable | `{ text, range, truncated }`; see [Clipboard](#clipboard) |
 
-Types: `CellRange`, `CellPosition`, `GridSelection`, `SelectionMode`, `SelectionChangeDetail` and `CellFocusDetail`, see [TypeScript](typescript.md).
+Types: `CellRange`, `CellPosition`, `GridSelection`, `SelectionMode`, `SelectionChangeDetail`, `SelectionCopyDetail` and `CellFocusDetail`, see [TypeScript](typescript.md).
