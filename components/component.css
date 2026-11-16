@@ -73,3 +73,41 @@ canvas-grid {
     }
   }
 }
+
+/* in the top layer, so it is not clipped by the grid or its page */
+canvas-grid .contextMenu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--canvas-grid-menu-border, #3d4650);
+  border-radius: 6px;
+  background: var(--canvas-grid-menu-background, #1f262d);
+  color: var(--canvas-grid-menu-color, #e6edf3);
+  font: 13px system-ui, sans-serif;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 40%);
+
+  & button {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover:not(:disabled), &:focus-visible {
+      background: var(--canvas-grid-menu-hover, #2f3d4a);
+      outline: none;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+}

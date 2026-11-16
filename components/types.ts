@@ -58,6 +58,26 @@ export interface SelectionChangeDetail extends GridSelection {
   selecting: boolean;
 }
 
+/** One entry of the grid's context menu. */
+export interface ContextMenuItem {
+  id: string;
+  label: string;
+  /** Greyed out and not pickable; a function is asked each time the menu opens. */
+  disabled?: boolean | ((detail: ContextMenuDetail) => boolean);
+  run(detail: ContextMenuDetail): void;
+}
+
+export interface ContextMenuDetail extends GridSelection {
+  /** Where the menu opens, in viewport coordinates. */
+  x: number;
+  y: number;
+  /** The cell under the pointer, or at the active cell when the keyboard opened the menu; the column alone over a header, the row alone over a row number. */
+  row: number | undefined;
+  column: number | undefined;
+  /** The entries to show: change this list to add, remove or reorder them for this opening. */
+  items: ContextMenuItem[];
+}
+
 export interface SelectionCopyDetail {
   /** What goes to the clipboard: the cells of the newest range as tab-separated values. Change it to copy something else. */
   text: string;

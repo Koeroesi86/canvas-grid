@@ -65,6 +65,28 @@ grid.addEventListener('selectioncopy', ({ detail }) => {
 });
 ```
 
+## Context menu
+
+With a `selectionMode` other than `'none'`, a right click, a long press, the menu key or Shift+F10 opens the grid's own menu instead of the browser's. It holds one entry, **Copy**, which calls `copySelection()`, so `selectioncopy` applies to it too. The menu is plain HTML (`role="menu"` with `menuitem` buttons) in the top layer, so it is not clipped by the grid, and it closes on Escape, an outside click, scrolling or picking an entry. Arrow keys, Home and End move through the entries and Enter picks one.
+
+A right click inside the selection keeps it; elsewhere it first selects what was clicked: the cell, or the whole column or row for a header or row number. The keyboard opens the menu at the active cell.
+
+The cancelable `gridcontextmenu` event fires first. `detail.items` is a copy of `contextMenuItems`: change it to add, remove or reorder entries for this opening, or call `preventDefault()` to show no menu (or your own). Set `contextMenuItems` to `[]` to keep the browser's menu.
+
+```js
+grid.contextMenuItems = [
+  ...grid.contextMenuItems,
+  { id: 'clear', label: 'Clear selection', run: () => grid.clearSelection() },
+];
+
+grid.addEventListener('gridcontextmenu', ({ detail }) => {
+  // detail.row / detail.column: the cell under the pointer; detail.ranges: the selection
+  if (detail.column === 0) detail.items = detail.items.filter(item => item.id !== 'copy');
+});
+```
+
+Entries are `{ id, label, disabled?, run(detail) }`; `disabled` is a boolean or a function of the detail, asked each time the menu opens. The menu follows the page's colours through the CSS variables `--canvas-grid-menu-background`, `--canvas-grid-menu-color`, `--canvas-grid-menu-border` and `--canvas-grid-menu-hover`.
+
 ## Model
 
 A selection is a list of **ranges** and one **active cell**. A range names its rows and columns by displayed position, both ends included:
@@ -105,11 +127,14 @@ Headers and row numbers show what is selected: a column header whose column has 
 | `getSelection()` | `{ ranges, active }`: copies of the ranges, and the active cell `{ row, column }` or `undefined` |
 | `setSelection(ranges, active?)` | Replaces the selection. `active` defaults to the first cell of the last range; an empty list clears it |
 | `clearSelection()` | Selects nothing |
+| `copySelection()` | Copies the newest range as the copy shortcut does, `selectioncopy` included. Resolves to whether anything was copied; browsers allow it from a user action only |
+| `contextMenuItems` | The entries of the [context menu](#context-menu) |
 
 | Event | When | `detail` |
 | --- | --- | --- |
 | `selectionchange` | The ranges or the active cell changed, also from the API | `{ ranges, active, selecting }`. `selecting` is `true` while the pointer is down, and a final event with `false` follows when it is released |
 | `cellfocus` | The active cell moved to another cell | `{ rowId, rowIndex, columnId, columnIndex }` |
 | `selectioncopy` | The user copies, before anything goes to the clipboard. Cancelable | `{ text, range, truncated }`; see [Clipboard](#clipboard) |
+| `gridcontextmenu` | The context menu is about to open. Cancelable | `{ ranges, active, x, y, row, column, items }`; see [Context menu](#context-menu) |
 
-Types: `CellRange`, `CellPosition`, `GridSelection`, `SelectionMode`, `SelectionChangeDetail`, `SelectionCopyDetail` and `CellFocusDetail`, see [TypeScript](typescript.md).
+Types: `CellRange`, `CellPosition`, `GridSelection`, `SelectionMode`, `SelectionChangeDetail`, `SelectionCopyDetail`, `CellFocusDetail`, `ContextMenuItem` and `ContextMenuDetail`, see [TypeScript](typescript.md).
