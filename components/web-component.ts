@@ -338,7 +338,6 @@ class CanvasGridComponent extends HTMLElement {
 
     this.addLayer(builtIn.background, { alpha: false });
     this.addLayer(builtIn.content);
-    this.addLayer(builtIn.selection);
     this.addLayer(builtIn.header);
     this.registerRenderer(builtIn.backgroundRenderer, this.cellBackgroundRenderer);
     this.registerRenderer(builtIn.valueRenderer, this.cellValueRenderer);
@@ -879,7 +878,9 @@ class CanvasGridComponent extends HTMLElement {
     const { ranges, active } = this.selectionModel;
     if (ranges.length === 0 && !this.selectionDrawn) return;
 
-    const layer = this.requireLayer(builtIn.selection);
+    const layer = this.getLayer(builtIn.selection);
+    if (!layer) return;
+
     const { ctx } = layer;
     layer.clear();
     this.selectionDrawn = ranges.length > 0;
@@ -1353,6 +1354,8 @@ class CanvasGridComponent extends HTMLElement {
     const previous = this.selectionModel.active && { ...this.selectionModel.active };
     if (!change()) return false;
 
+    // a canvas is only worth its memory and compositing once something is selected
+    if (this.selectionModel.ranges.length > 0 && !this.getLayer(builtIn.selection)) this.addLayer(builtIn.selection, { before: builtIn.header });
     this.selectionDirty = true;
     this.requestRender();
     this.emitSelectionChange(selecting);

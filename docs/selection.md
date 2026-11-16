@@ -48,7 +48,7 @@ The active cell is where keyboard moves start; it is drawn with a border and wit
 
 ## Drawing
 
-Selection has a layer of its own (`selection`, between `content` and `header`). Each range is drawn as one tinted rectangle with an outline, however many cells it covers, and the active cell as a thicker border. It is redrawn only when the selection, the scroll position or the layout changes; a grid that never selects never touches the layer.
+Selection has a layer of its own (`selection`, between `content` and `header`), created the first time something is selected, so a grid that never selects carries no extra canvas. Each range is drawn as one tinted rectangle with an outline, however many cells it covers, and the active cell as a thicker border. It is redrawn only when the selection, the scroll position or the layout changes.
 
 | Property | Default | Description |
 | --- | --- | --- |

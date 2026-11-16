@@ -1,6 +1,6 @@
 # Custom renderers and layers
 
-The grid draws onto stacked canvases called layers: `background`, `content`, `selection` (the [selection](selection.md) tint, drawn by the grid itself) and `header` out of the box. A renderer draws into one layer and is registered under a name; columns select renderers by name. The built-in ones are `'background'` (fill, borders and the update flash), `'value'` (the text) and `'header'`.
+The grid draws onto stacked canvases called layers: `background`, `content`, `selection` (the [selection](selection.md) tint, drawn by the grid itself and only added once something is selected) and `header` out of the box. A renderer draws into one layer and is registered under a name; columns select renderers by name. The built-in ones are `'background'` (fill, borders and the update flash), `'value'` (the text) and `'header'`.
 
 Layers you add are cleared whenever the grid scrolls and every visible cell is drawn again (`forced` is `true`), so a renderer only needs to clear its own cell to handle value changes.
 
