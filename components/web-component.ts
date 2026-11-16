@@ -15,13 +15,24 @@ import CellValueRenderer from './cell-value';
 import { defaultTextStyle } from './text';
 import type { TextStyle } from './text';
 import { resolveFont } from './utils/inherited-font';
+import { borderAt, buildOffsets, clampWidth, columnAt } from './utils/column-layout';
+import { SORT_INDICATOR_AREA } from './sort-indicator';
 import type { LayerOptions } from './utils/layer';
 import type { CellContext, CellRenderer, CellState, Key, RendererRef, RowId, RowInput, SortDirection, SortKey } from './types';
 import type { RowIdGetter } from './utils/data-store';
+import type { Row } from './utils/row-store';
 
 const classes = {
   scrollArea: 'scrollArea',
+  resizeGuide: 'resizeGuide',
 };
+
+/** How far from a column border the pointer still grabs it, in CSS px. Fingers are less precise than mice. */
+const RESIZE_GRAB = { mouse: 4, touch: 12 };
+/** Longest a live `columnresizing` event is held back while dragging, in ms. */
+const RESIZE_EVENT_INTERVAL_MS = 50;
+/** Most rows measured by auto-fit; the rows in view are what counts, and 100k rows must not make it slow. */
+const AUTO_SIZE_SAMPLE_ROWS = 500;
 
 /** Layers and renderers every grid starts with. */
 const builtIn = {
@@ -57,6 +68,12 @@ export interface ColumnHeader {
   id: Key;
   displayName?: string;
   width: number;
+  /** Narrowest the column can get when resized, in px. Defaults to 20. */
+  minWidth?: number;
+  /** Widest the column can get when resized, in px. Defaults to unlimited. */
+  maxWidth?: number;
+  /** Whether the user can drag this column's right border. Defaults to `true`; `setColumnWidth` ignores it. */
+  resizable?: boolean;
   /** Renderers drawing a cell of this column, in order. Defaults to the grid's `cellRenderers`. */
   renderers?: RendererRef[];
   valueFormatter: (value: unknown) => string;
@@ -66,6 +83,21 @@ export interface ColumnHeader {
   headerFont?: string;
   /** Renderer drawing the header of this column. */
   headerRenderer: RendererRef;
+}
+
+/** What `getColumnState` returns and `setColumnState` takes: enough to restore the column widths later. */
+export interface ColumnState {
+  id: Key;
+  width: number;
+}
+
+/** What triggered a resize: the user dragging or double-clicking a border, `autoSizeColumns`, or code calling `setColumnWidth` / `setColumnState`. */
+export type ColumnResizeSource = 'drag' | 'auto' | 'api';
+
+export interface ColumnResizeDetail {
+  columnId: Key;
+  width: number;
+  source: ColumnResizeSource;
 }
 
 export type ColumnDefinition = Key | (Partial<ColumnHeader> & { id: Key });
@@ -88,6 +120,11 @@ export type { CellContext, CellRenderer, CellState, LayerOptions, RendererRef, S
 declare global {
   interface HTMLElementTagNameMap {
     'canvas-grid': CanvasGridComponent;
+  }
+
+  interface HTMLElementEventMap {
+    columnresizing: CustomEvent<ColumnResizeDetail>;
+    columnresized: CustomEvent<ColumnResizeDetail>;
   }
 }
 
@@ -396,6 +433,7 @@ class CanvasGridComponent extends HTMLElement {
   connectedCallback() {
     this.layers.forEach(layer => this.appendChild(layer.canvas));
     this.appendChild(this.scrollArea);
+    this.appendChild(this.resizeGuide);
 
     this.updateLastRender();
     this.refreshFonts();
@@ -417,6 +455,12 @@ class CanvasGridComponent extends HTMLElement {
     }, 200);
     this.scrollArea.addEventListener('pointermove', this.onPointerMove);
     this.scrollArea.addEventListener('pointerleave', this.onPointerLeave);
+    this.scrollArea.addEventListener('pointerdown', this.onResizePointerDown);
+    this.scrollArea.addEventListener('pointermove', this.onResizePointerMove);
+    this.scrollArea.addEventListener('pointerup', this.onResizePointerEnd);
+    this.scrollArea.addEventListener('pointercancel', this.onResizePointerEnd);
+    this.scrollArea.addEventListener('dblclick', this.onResizeDoubleClick);
+    this.scrollArea.addEventListener('touchstart', this.onResizeTouchStart, { passive: false });
     // the offsets are read once per frame in `render`, so a scroll event costs nothing and no frame shows a stale position
     this.scrollArea.addEventListener('scroll', () => {
       this.isScrolling = true;
@@ -503,6 +547,12 @@ class CanvasGridComponent extends HTMLElement {
   render() {
     this.animationFrame = undefined;
     this.readScrollOffsets();
+    if (this.relayoutPending) {
+      this.relayoutPending = false;
+      this.forceDraw();
+      this.updateLastRender();
+      return;
+    }
     const delta = new Date().valueOf() - this.lastRender;
     // the frame cap is for animations; scrolling draws on every frame, or it would visibly lag behind the scrollbar
     // a little under the frame time: frames arrive a fraction early or late, and would otherwise be skipped by turns
@@ -606,7 +656,7 @@ class CanvasGridComponent extends HTMLElement {
       for (let fakeRowIndex= 0; fakeRowIndex <= fakeRows; fakeRowIndex++)  {
         this.headers.forEach(header => {
           this.describe(
-            Math.round((header.index * header.width) + (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset),
+            Math.round(this.columnOffsets[header.index] + (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset),
             Math.round((fakeRowIndex * this.cellHeight) + (this.showHeaders ? this.headerHeight : 0) - this.scrollYOffset),
             header.width,
             this.cellHeight,
@@ -654,7 +704,7 @@ class CanvasGridComponent extends HTMLElement {
           const { cell } = this;
           cell.x = x;
           cell.y = currentY;
-          cell.width = header.width;
+          cell.width = Math.round(header.width);
           cell.height = row.height;
           cell.row = cellRow;
           cell.column = header;
@@ -688,14 +738,26 @@ class CanvasGridComponent extends HTMLElement {
   /** The columns overlapping the viewport horizontally, with their x position and values; found once per draw, not per row. */
   private getVisibleColumns(xOffset: number) {
     const visible: { header: ColumnHeader; id: string; x: number; store: ColumnStore | undefined }[] = [];
-    let x = xOffset;
-    this.headers.forEach((header, key) => {
-      if (this.isInViewport(x, 0, header.width, 0)) {
-        visible.push({ header, id: String(key), x, store: this.dataStore.columns.get(String(key)) });
-      }
-      x += Math.round(header.width);
-    });
+    const { columnList, columnOffsets } = this;
+    for (let index = Math.max(0, columnAt(columnOffsets, -xOffset)); index < columnList.length; index++) {
+      const x = xOffset + columnOffsets[index];
+      if (x > this.viewportWidth) break;
+
+      const header = columnList[index];
+      visible.push({ header, id: String(header.id), x, store: this.dataStore.columns.get(String(header.id)) });
+    }
     return visible;
+  }
+
+  /** Columns in display order, and where each starts; rebuilt when columns or widths change. */
+  private columnList: ColumnHeader[] = [];
+
+  private columnOffsets: number[] = [0];
+
+  private updateColumnLayout() {
+    this.columnList = [];
+    this.headers.forEach(header => this.columnList.push(header));
+    this.columnOffsets = buildOffsets(this.columnList.map(header => header.width));
   }
 
   renderRowNumber(row: { index: number; height?: number }, y: number) {
@@ -787,17 +849,14 @@ class CanvasGridComponent extends HTMLElement {
   }
 
   renderHeaders() {
-    let currentX = (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset;
+    const xOffset = (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.scrollXOffset;
 
-    this.headers.forEach(header => {
-      if (this.isInViewport(currentX, 0, header.width, this.headerHeight)) {
-        this.describe(currentX, 0, header.width, this.headerHeight, {
-          column: header,
-          formatted: header.displayName ?? '',
-        });
-        this.paint(header.headerRenderer);
-      }
-      currentX += header.width;
+    this.getVisibleColumns(xOffset).forEach(({ header, x }) => {
+      this.describe(x, 0, Math.round(header.width), this.headerHeight, {
+        column: header,
+        formatted: header.displayName ?? '',
+      });
+      this.paint(header.headerRenderer);
     });
 
     if (this.scrollXOffset + this.rowNumbersWidth > 0) {
@@ -809,6 +868,173 @@ class CanvasGridComponent extends HTMLElement {
     return this.headers.get(key);
   }
 
+  /** Redraws everything on the next frame, without waiting for the frame cap; for changes that move cells, like resizing. */
+  private requestRelayout() {
+    this.relayoutPending = true;
+    this.requestRender();
+  }
+
+  private relayoutPending = false;
+
+  private emitResized(type: 'columnresized' | 'columnresizing', column: ColumnHeader, source: ColumnResizeSource) {
+    this.dispatchEvent(new CustomEvent<ColumnResizeDetail>(type, { detail: { columnId: column.id, width: column.width, source } }));
+  }
+
+  /** Sets the widths within each column's limits and refreshes the layout once; returns the columns that actually changed. */
+  private applyColumnWidths(widths: Iterable<[Key, number]>) {
+    const changed = Array.from(widths)
+      .map(([id, width]) => ({ column: this.headers.get(id), width }))
+      .filter(({ column, width }) => column !== undefined && clampWidth(width, column.minWidth, column.maxWidth) !== Math.round(column.width))
+      .flatMap(({ column, width }) => (column === undefined ? [] : [{ column, width: clampWidth(width, column.minWidth, column.maxWidth) }]))
+      .map(({ column, width }) => Object.assign(column, { width }));
+    if (changed.length === 0) return changed;
+
+    this.updateColumnLayout();
+    this.refreshScrollbar();
+    this.requestRelayout();
+    return changed;
+  }
+
+  /** Sets a column's width in px, within its `minWidth` / `maxWidth`, and fires `columnresized` when it changed. Works for columns that are not `resizable`. */
+  setColumnWidth(id: Key, width: number) {
+    this.applyColumnWidths([[id, width]]).forEach(column => this.emitResized('columnresized', column, 'api'));
+  }
+
+  /** The widths of all columns, in display order; pass it to `setColumnState` to restore them. */
+  getColumnState(): ColumnState[] {
+    return this.columnList.map(({ id, width }) => ({ id, width: Math.round(width) }));
+  }
+
+  /** Restores widths from `getColumnState`; unknown columns are skipped. Fires `columnresized` for each column that changed. */
+  setColumnState(state: readonly ColumnState[]) {
+    this.applyColumnWidths(state.map(({ id, width }): [Key, number] => [id, width]))
+      .forEach(column => this.emitResized('columnresized', column, 'api'));
+  }
+
+  private measureContext: CanvasRenderingContext2D | null | undefined = undefined;
+
+  /**
+   * Fits columns (all of them by default) to their content: the header and the rows in view, at most
+   * `AUTO_SIZE_SAMPLE_ROWS` of them, so it stays fast with any number of rows. Fires `columnresized` for each that changed.
+   */
+  autoSizeColumns(ids?: readonly Key[]) {
+    this.measureContext ??= document.createElement('canvas').getContext('2d');
+    const ctx = this.measureContext;
+    if (!ctx) return;
+
+    const { scrollTop } = this.scrollArea;
+    const rows: Row[] = [];
+    for (let index = this._dataCollection.indexAt(scrollTop); index < this._dataCollection.length && rows.length < AUTO_SIZE_SAMPLE_ROWS; index++) {
+      const row = this._dataCollection.at(index);
+      if (!row || this._dataCollection.topOf(index) > scrollTop + this.viewportHeight) break;
+      rows.push(row);
+    }
+
+    const padding = this.cellPadding.left + this.cellPadding.right + 1;
+    const widest = (font: string, texts: Iterable<string>) => {
+      ctx.font = font;
+      return Math.max(0, ...Array.from(texts, text => ctx.measureText(text).width));
+    };
+    const widths = (ids ?? this.columnList.map(({ id }) => id))
+      .flatMap(id => this.headers.get(id) ?? [])
+      .map((column): [Key, number] => {
+        const store = this.dataStore.columns.get(String(column.id));
+        const texts = rows.flatMap(({ slot }) => store?.get(slot) ?? []).map(value => column.valueFormatter(value));
+        const header = widest(column.headerFont ?? this.headerCellRenderer.font, [column.displayName ?? '']) + padding + SORT_INDICATOR_AREA;
+        const content = widest(column.font ?? this.cellValueRenderer.font, texts) + padding;
+        return [column.id, Math.ceil(Math.max(header, content))];
+      });
+    this.applyColumnWidths(widths).forEach(column => this.emitResized('columnresized', column, 'auto'));
+  }
+
+  private resizeDrag: { column: ColumnHeader; startX: number; startWidth: number; lastEvent: number } | undefined = undefined;
+
+  /** The column whose right border is under the pointer, when it can be resized by dragging. */
+  private findResizeBorder(clientX: number, clientY: number, pointerType: string) {
+    if (!this.showHeaders) return undefined;
+
+    const rect = this.getBoundingClientRect();
+    const x = clientX - rect.left - (this.showRowNumbers ? this.rowNumbersWidth : 0);
+    const y = clientY - rect.top;
+    // not over the header, the row numbers or the vertical scrollbar
+    if (y < 0 || y > this.headerHeight || x < 0 || x > this.scrollArea.clientWidth) return undefined;
+
+    const column = this.columnList[borderAt(this.columnOffsets, x + this.scrollArea.scrollLeft, pointerType === 'touch' ? RESIZE_GRAB.touch : RESIZE_GRAB.mouse)];
+    return column?.resizable === false ? undefined : column;
+  }
+
+  private moveResizeGuide() {
+    const { resizeDrag } = this;
+    this.resizeGuide.style.display = resizeDrag ? 'block' : 'none';
+    if (!resizeDrag) return;
+
+    const right = this.columnOffsets[resizeDrag.column.index + 1] ?? 0;
+    this.resizeGuide.style.transform = `translateX(${(this.showRowNumbers ? this.rowNumbersWidth : 0) + right - this.scrollArea.scrollLeft}px)`;
+  }
+
+  private readonly resizeGuide = Object.assign(document.createElement('div'), { className: classes.resizeGuide });
+
+  private readonly onResizePointerDown = (event: PointerEvent) => {
+    const column = event.button === 0 ? this.findResizeBorder(event.clientX, event.clientY, event.pointerType) : undefined;
+    if (!column) return;
+
+    event.preventDefault();
+    this.scrollArea.setPointerCapture(event.pointerId);
+    this.resizeDrag = { column, startX: event.clientX, startWidth: column.width, lastEvent: 0 };
+    this.moveResizeGuide();
+  };
+
+  private readonly onResizePointerMove = (event: PointerEvent) => {
+    const { resizeDrag } = this;
+    if (!resizeDrag) {
+      // the cursor follows the border; touch has no hover
+      this.scrollArea.style.cursor = this.findResizeBorder(event.clientX, event.clientY, event.pointerType) ? 'col-resize' : '';
+      return;
+    }
+
+    const { column } = resizeDrag;
+    this.applyColumnWidths([[column.id, resizeDrag.startWidth + event.clientX - resizeDrag.startX]]);
+    this.moveResizeGuide();
+    const now = performance.now();
+    if (now - resizeDrag.lastEvent < RESIZE_EVENT_INTERVAL_MS) return;
+
+    resizeDrag.lastEvent = now;
+    this.emitResized('columnresizing', column, 'drag');
+  };
+
+  private readonly onResizePointerEnd = (event: PointerEvent) => {
+    const { resizeDrag } = this;
+    if (!resizeDrag) return;
+
+    this.resizeDrag = undefined;
+    this.scrollArea.releasePointerCapture(event.pointerId);
+    this.moveResizeGuide();
+    if (resizeDrag.column.width !== resizeDrag.startWidth) this.emitResized('columnresized', resizeDrag.column, 'drag');
+  };
+
+  private readonly onResizeDoubleClick = (event: MouseEvent) => {
+    const column = this.findResizeBorder(event.clientX, event.clientY, 'mouse');
+    if (!column) return;
+
+    if (column === this.columnList[this.columnList.length - 1] && this.fillRemainingSpace(column)) return;
+    this.autoSizeColumns([column.id]);
+  };
+
+  /** Widens the last column to the right edge of the viewport when the columns leave it empty; returns whether there was room. */
+  private fillRemainingSpace(column: ColumnHeader) {
+    const free = this.scrollArea.clientWidth - (this.showRowNumbers ? this.rowNumbersWidth : 0) - this.columnOffsets[this.columnOffsets.length - 1];
+    if (free <= 0) return false;
+
+    this.applyColumnWidths([[column.id, column.width + free]]).forEach(changed => this.emitResized('columnresized', changed, 'auto'));
+    return true;
+  }
+
+  /** Keeps a touch that starts on a border from scrolling the grid, so the pointer events can drag it instead. */
+  private readonly onResizeTouchStart = (event: TouchEvent) => {
+    const [touch] = Array.from(event.touches);
+    if (event.touches.length === 1 && this.findResizeBorder(touch.clientX, touch.clientY, 'touch')) event.preventDefault();
+  };
+
   get totalHeight() {
     return this._dataCollection.totalHeight;
   }
@@ -816,10 +1042,7 @@ class CanvasGridComponent extends HTMLElement {
   refreshScrollbar() {
     const height = this.totalHeight + this.headerHeight;
     this.scrollHelper.style.height = `${height}px`;
-    let width = 0;
-    this.headers.forEach(header => {
-      width += Math.round(header.width);
-    });
+    const width = this.columnOffsets[this.columnOffsets.length - 1];
     this.scrollHelper.style.width = `${width}px`;
   }
 
@@ -893,6 +1116,7 @@ class CanvasGridComponent extends HTMLElement {
           });
         }
       });
+      this.updateColumnLayout();
       this.refreshScrollbar();
       this.forceDraw();
     }

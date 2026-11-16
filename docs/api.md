@@ -14,6 +14,9 @@ Column object fields (`ColumnDefinition`):
 | `id` | required | Key of the row property shown in this column |
 | `displayName` | – | Header text. Not derived from `id` for object columns |
 | `width` | `100` | Column width in px |
+| `minWidth` | `20` | Narrowest the column can get, in px. Applies to dragging, auto-fit and `setColumnWidth` |
+| `maxWidth` | unlimited | Widest the column can get, in px |
+| `resizable` | `true` | Whether dragging the right border of the header resizes the column. `setColumnWidth` and `autoSizeColumns` ignore it |
 | `valueFormatter` | `String(value)` | Converts the raw value to the displayed string. Runs lazily, only for cells being drawn, and again only when the cell's value changes |
 | `renderers` | grid's `cellRenderers` | Renderers drawing a cell of this column, in order. Names of [registered renderers](renderers.md) or renderer objects |
 | `font` | grid `font` | CSS font of this column's cells, e.g. `'600 12px Menlo, monospace'`. Widths are measured per font, so mixing fonts costs nothing extra while drawing. Keep it within the row height (`cellHeight`); it is not `'inherit'`, which belongs to the grid's `font` |
@@ -31,6 +34,9 @@ Column object fields (`ColumnDefinition`):
 | `transaction({ add, update, remove })` | Batch form of the above |
 | `getRowData(id)` | `{ id, index, height, values }` for a row (`index` is its displayed position, `values` the raw values by column id), or `undefined` |
 | `setSortModel(keys)` / `getSortModel()` | Orders the rows, see [Sorting](sorting.md). An empty list restores the original order |
+| `setColumnWidth(id, width)` | Sets a column's width in px, within its `minWidth` / `maxWidth` |
+| `autoSizeColumns(ids?)` | Fits the given columns (all by default) to their header and the rows in view, at most 500 of them, so it stays fast with any number of rows |
+| `getColumnState()` / `setColumnState(state)` | `[{ id, width }]` in display order; save the first and pass it to the second to restore widths. Unknown ids are skipped |
 | `refreshFonts()` | Re-reads inherited fonts and redraws. Call it after changing the CSS font while `font` / `headerFont` are `'inherit'`; loading web fonts does it automatically |
 | `forceDraw()` | Clears and redraws everything |
 | `registerRenderer(name, renderer)` | Makes a [renderer](renderers.md) available to columns by name; an existing name is replaced |
@@ -66,3 +72,17 @@ Updates are throttled (50 ms) and changed cells flash for `flashInDuration + fla
 ## Text
 
 Text is laid out with the browser's own canvas text engine, in the cell's padded box and vertically centred. Positions snap to device pixels, so it stays sharp at fractional zoom. With `textOverflow: 'clip'` (the default) the text is drawn as it is, clipped to the padded cell; nothing is measured. With `'ellipsis'` a cell is cut only when it really does not fit: widths are summed per character (cheap, exact for monospace fonts), and cells that do not fit by that sum are cut using the kerning of each pair of letters, measured once per pair, so kerning and ligatures are accounted for. Text with joined scripts such as Arabic is measured as a whole string. Characters that form one glyph (emoji, combining accents, Indic and Thai vowel signs, conjoining Hangul jamo) are never cut apart; where a cluster ends is decided by the browser's `Intl.Segmenter`. The style properties above (apart from `textOverflow`) are applied only when you set them; browsers without support for one of them ignore it.
+
+## Resizing columns
+
+Drag the right border of a header to resize its column (a guide line follows the pointer, and the cursor becomes `col-resize` over a border); double-click it to fit the column to its content. Double-clicking the border of the last column while the columns do not fill the grid's width widens it to fill the free space instead (within its `maxWidth`). Mouse, pen and touch all work. The scroll extent and the visible columns update while dragging.
+
+| Event | When | `detail` |
+| --- | --- | --- |
+| `columnresizing` | While dragging, at most every 50 ms | `{ columnId, width, source: 'drag' }` |
+| `columnresized` | When a drag ends, and after `setColumnWidth`, `setColumnState` or `autoSizeColumns` change a column | `{ columnId, width, source: 'drag' \| 'auto' \| 'api' }` |
+
+```js
+grid.addEventListener('columnresized', ({ detail }) => localStorage.setItem('columns', JSON.stringify(grid.getColumnState())));
+grid.setColumnState(JSON.parse(localStorage.getItem('columns') ?? '[]'));
+```
